@@ -23,6 +23,9 @@ Highlights:
 ## News
 
 > [!IMPORTANT]
+> **2026-07-01:** VibeVoice 7B joins the 1.5B model, and decoder LoRA adapters can now be merged at load time through `--load-option vibevoice.lora`.
+
+> [!IMPORTANT]
 > **2026-06-30:** VibeVoice 1.5B is now released in the framework, bringing long-form, multi-speaker dialogue TTS into the normal audio.cpp model surface.
 
 > [!TIP]
@@ -55,7 +58,7 @@ Current model status in the framework:
 | **silero_vad** | VAD | lang agnostic | Silero VAD | **released** |
 | **sortformer_diar** | diarization | en | Sortformer-4spk-v1 | **released** |
 | **vevo2** | TTS, singing generation, voice conversion, singing conversion, editing | en, zh | Vevo2 with Qwen2.5-0.5B AR model | **released** |
-| **vibevoice** | TTS, multi-speaker dialogue TTS | en, zh | VibeVoice-1.5B | **released** |
+| **vibevoice** | TTS, multi-speaker dialogue TTS | en, zh | VibeVoice-1.5B, VibeVoice-7B | **released** |
 | **voxcpm2** | TTS, voice cloning, voice design | ar, da, de, el, en, es, fi, fr, he, hi, id, it, ja, km, ko, lo, ms, my, nl, no, pl, pt, ru, sv, sw, th, tl, tr, vi, zh | VoxCPM2-2B, 48 kHz | **released** |
 | ace_step | music generation | 50+ langs | ACE-Step 1.5 with acestep-5Hz-lm-1.7B | integration |
 | audio_flamingo_next | audio understanding, ASR, audio captioning, audio QA | en, multilingual audio understanding | Audio Flamingo Next Instruct, Qwen2-7B based | optimization |
@@ -425,6 +428,7 @@ Recommended top-level install packages:
 | `supertonic_3` | Supertonic 3 | **Yes** |
 | `vevo2` | Vevo2 | No |
 | `vibevoice_1_5b` | VibeVoice 1.5B | No |
+| `vibevoice_7b` | VibeVoice 7B | No |
 | `voxcpm2` | VoxCPM2 | No |
 
 > [!WARNING]

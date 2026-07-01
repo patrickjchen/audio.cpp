@@ -358,18 +358,21 @@ audiocpp_cli --task tts --family supertonic --model models/supertonic-3 --backen
 
 ## VibeVoice
 
-VibeVoice 1.5B is a long-form multi-speaker TTS model. Prompts use speaker-labeled lines, and speaker reference WAVs are provided in the same order as the speaker ids.
+VibeVoice is a long-form multi-speaker TTS model, available in 1.5B and 7B sizes. Prompts use speaker-labeled lines, and speaker reference WAVs are provided in the same order as the speaker ids.
 
 | Field | Value |
 |---|---|
 | Family | `vibevoice` |
-| Model directory | `models/VibeVoice-1.5B` |
+| Model directory | `models/VibeVoice-1.5B` (or `models/VibeVoice-7B`) |
 | Task | `tts` |
 | Modes | `offline` |
 | Languages | Model auto-handles supported languages |
 | Voice input | Up to four speaker reference WAVs through `voice_samples` |
 | Text format | Lines like `Speaker 1: ... Speaker 2: ...`; ids are normalized internally |
 | Long-form | No text chunking; generation uses the model long-form path |
+| LoRA | Optional PEFT decoder adapter through `--load-option vibevoice.lora` |
+
+Both sizes share the same CLI surface and the same Qwen2.5 tokenizer; the 7B is simply larger (hidden size 3584 vs 1536) and needs a matching 7B LoRA if one is used.
 
 ```bash
 audiocpp_cli --task tts --family vibevoice --model models/VibeVoice-1.5B --backend cuda --text "Speaker 1: Hello. Speaker 2: Nice to meet you." --request-option voice_samples=assets/resources/a.wav,assets/resources/b.wav --out out.wav
@@ -386,5 +389,9 @@ audiocpp_cli --task tts --family vibevoice --model models/VibeVoice-1.5B --backe
 | `--temperature` | float | `1.0` | Decoder sampling temperature. |
 | `--top-k` | integer | `50` | Decoder top-k sampling limit. |
 | `--top-p` | float | `1.0` | Decoder nucleus sampling limit. |
+| `--load-option vibevoice.lora=<path>` | PEFT adapter dir or `.safetensors` | not set | Merge a LoRA adapter into the decoder linears at load time. Adapter dims must match the base model size. |
+| `--load-option vibevoice.lora_scale=<float>` | float | `lora_alpha / r` | Override the LoRA merge scale from `adapter_config.json`. |
+
+A LoRA is merged into the base weights at load time, so it composes with the `vibevoice.*_weight_type` quantization options and adds no per-step cost. Use a 1.5B adapter with `VibeVoice-1.5B` and a 7B adapter with `VibeVoice-7B`; a size mismatch is rejected with a descriptive error.
 
 For backend weight-type controls, use `audiocpp_cli --inspect --model <model-dir> --family <family>`.

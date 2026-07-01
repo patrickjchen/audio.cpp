@@ -111,6 +111,8 @@ public:
             {"vibevoice.connector_weight_type", "native|f32|f16|bf16|q8_0", "Acoustic and semantic connector weight storage type."},
             {"vibevoice.decoder_weight_type", "native|f32|f16|bf16|q8_0", "Language decoder weight storage type."},
             {"vibevoice.diffusion_head_weight_type", "native|f32|f16|bf16|q8_0", "Diffusion prediction head weight storage type."},
+            {"vibevoice.lora", "path", "PEFT LoRA adapter directory or safetensors merged into the decoder weights."},
+            {"vibevoice.lora_scale", "float", "LoRA merge scale override; defaults to lora_alpha / r."},
         };
         inspection.discovered_configs = discover_config_assets(request);
         inspection.discovered_weights = discover_weight_assets(request);

@@ -219,6 +219,7 @@ add_library(engine_runtime STATIC
     src/models/vibevoice/diffusion_sampler.cpp
     src/models/vibevoice/generator.cpp
     src/models/vibevoice/loader.cpp
+    src/models/vibevoice/lora.cpp
     src/models/vibevoice/scheduler.cpp
     src/models/vibevoice/session.cpp
     src/models/vibevoice/tokenizer_audio.cpp

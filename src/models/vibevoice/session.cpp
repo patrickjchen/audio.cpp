@@ -4,6 +4,7 @@
 #include "engine/framework/assets/tensor_source.h"
 #include "engine/framework/debug/trace.h"
 #include "engine/framework/runtime/options.h"
+#include "engine/models/vibevoice/lora.h"
 
 #include <algorithm>
 #include <cctype>
@@ -25,6 +26,25 @@ std::shared_ptr<const VibeVoiceAssets> require_assets(std::shared_ptr<const Vibe
         throw std::runtime_error("VibeVoice session requires assets");
     }
     return assets;
+}
+
+std::shared_ptr<const VibeVoiceAssets> apply_lora_option(
+    std::shared_ptr<const VibeVoiceAssets> assets,
+    const runtime::SessionOptions & options) {
+    const auto lora_path = runtime::find_option(options.options, {"vibevoice.lora"});
+    if (!lora_path.has_value() || lora_path->empty()) {
+        return assets;
+    }
+    float scale_override = -1.0F;
+    if (const auto value = runtime::parse_finite_float_option(options.options, {"vibevoice.lora_scale"})) {
+        if (*value <= 0.0F) {
+            throw std::runtime_error("VibeVoice vibevoice.lora_scale must be positive");
+        }
+        scale_override = *value;
+    }
+    auto updated = std::make_shared<VibeVoiceAssets>(*assets);
+    updated->model_weights = make_lora_merged_tensor_source(assets->model_weights, *lora_path, scale_override);
+    return updated;
 }
 
 void validate_weight_storage(engine::assets::TensorStorageType storage_type, const char * option_name) {
@@ -52,6 +72,8 @@ const runtime::SessionOptions & require_supported_backend_options(const runtime:
             key == "vibevoice.decoder_weight_type" ||
             key == "vibevoice.diffusion_head_weight_type") {
             validate_weight_storage(engine::assets::parse_tensor_storage_type(value), key.c_str());
+        } else if (key == "vibevoice.lora" || key == "vibevoice.lora_scale") {
+            // Validated where the adapter is loaded.
         } else if (key.rfind("vibevoice.", 0) == 0) {
             throw std::runtime_error("unknown VibeVoice session option: " + key);
         }
@@ -195,7 +217,7 @@ VibeVoiceSession::VibeVoiceSession(
     std::shared_ptr<const VibeVoiceAssets> assets)
     : runtime::RuntimeSessionBase(require_supported_backend_options(options)),
       task_(task),
-      assets_(require_assets(std::move(assets))),
+      assets_(apply_lora_option(require_assets(std::move(assets)), options)),
       text_tokenizer_(assets_),
       audio_tokenizer_(
           assets_,
