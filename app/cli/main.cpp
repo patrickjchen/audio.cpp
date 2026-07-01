@@ -36,7 +36,7 @@ void print_task_list_help() {
         << "    --backend cpu|cuda|vulkan|metal|best\n"
         << "    --mode offline|streaming  default offline\n"
         << "    --device <n>\n"
-        << "    --threads <n>  Backend and OpenMP worker threads, default 1\n"
+        << "    --threads <n>  Backend and OpenMP worker threads, default 4\n"
         << "    --registry-config <path>\n"
         << "    --config <id>\n"
         << "    --weight <id>\n"
@@ -423,7 +423,7 @@ int main(int argc, char ** argv) {
         const auto model_arg = find_arg(argc, argv, "--model");
         const auto pipeline_arg = find_arg(argc, argv, "--pipeline");
         if (pipeline_arg.has_value()) {
-            const int threads = parse_int_arg(argc, argv, "--threads", 1);
+            const int threads = parse_int_arg(argc, argv, "--threads", 4);
             if (threads <= 0) {
                 throw std::runtime_error("--threads must be positive");
             }
@@ -496,7 +496,7 @@ int main(int argc, char ** argv) {
         engine::runtime::SessionOptions session_options;
         session_options.backend.type = parse_backend(find_arg(argc, argv, "--backend").value_or("cpu"));
         session_options.backend.device = parse_int_arg(argc, argv, "--device", 0);
-        const int threads = parse_int_arg(argc, argv, "--threads", 1);
+        const int threads = parse_int_arg(argc, argv, "--threads", 4);
         if (threads <= 0) {
             throw std::runtime_error("--threads must be positive");
         }

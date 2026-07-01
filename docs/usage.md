@@ -16,7 +16,7 @@ audiocpp_cli --task <task> --family <family> --model <model-dir> --backend <back
 | `--backend` | `cpu`, `cuda`, `vulkan`, `metal`, `best` | `cpu` | Inference backend. |
 | `--mode` | `offline`, `streaming` | `offline` | Run mode. Most models are offline. |
 | `--device` | integer | `0` | Backend device index. |
-| `--threads` | integer | `1` | Backend/OpenMP worker threads. |
+| `--threads` | integer | `4` | Backend/OpenMP worker threads. |
 | `--log` | flag | off | Print progress and timing logs to stdout. |
 | `--log-file` | path | not set | Stream progress and timing logs to a file. |
 

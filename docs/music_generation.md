@@ -17,7 +17,7 @@ ACE-Step generates and edits music from prompts, lyrics, and optional source aud
 | Family | `ace_step` |
 | Model directory | `models/Ace-Step1.5` |
 | Task | `gen` |
-| Routes | `text2music`, `complete`, `lego`, `extract`, `cover-nofsq`, `repaint` |
+| Routes | `text2music`, `complete`, `lego`, `extract`, `cover`, `cover-nofsq`, `repaint` |
 | Main inputs | Prompt text, optional lyrics, optional source audio depending on route |
 | Languages | 19+ lyric languages supported by the model |
 
@@ -27,7 +27,7 @@ audiocpp_cli --task gen --family ace_step --model models/Ace-Step1.5 --backend c
 
 | Option | Values | Default | Meaning |
 |---|---|---:|---|
-| `--task-route` | `text2music`, `complete`, `lego`, `extract`, `cover-nofsq`, `repaint` | `text2music` | ACE-Step operation. |
+| `--task-route` | `text2music`, `complete`, `lego`, `extract`, `cover`, `cover-nofsq`, `repaint` | `text2music` | ACE-Step operation. |
 | `--text` | text | required | Music prompt or edit instruction. |
 | `--lyrics` | text | empty string | Vocal lyrics. |
 | `--audio` | WAV path | not set | Source audio for edit/extract/cover routes. |
@@ -64,7 +64,7 @@ audiocpp_cli --task gen --family stable_audio --model models/stable-audio-3-smal
 |---|---|---:|---|
 | `--text` | prompt text | required | Music or sound-effect prompt. |
 | `--audio` | WAV path | not set | Source audio for init-audio or inpainting. |
-| `--duration-seconds` | seconds | `120` | Target duration per prompt. |
+| `--duration-seconds` | `seconds[,seconds...]` | `120` | Target duration per prompt. Use one value for all prompts, or one comma-separated value per Stable Audio `batch_size` item. |
 | `--num-inference-steps` | integer | `8` | RF diffusion steps. |
 | `--guidance-scale` | float | `1.0` | Classifier-free guidance scale. |
 | `--request-option audio_input_kind=<kind>` | `init_audio`, `inpaint_audio` | `init_audio` when `--audio` is provided | How the source audio is used. |
