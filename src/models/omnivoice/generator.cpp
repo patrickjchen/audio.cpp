@@ -399,7 +399,24 @@ struct PackedInputs {
     std::array<std::vector<int32_t>, 8> unconditional_audio_ids;
 };
 
-class ForwardGraph {
+class GeneratorForwardGraph {
+public:
+    virtual ~GeneratorForwardGraph() = default;
+    virtual bool matches(const WeightsRuntime & runtime, int64_t total_tokens, int64_t target_frames) const = 0;
+    virtual void rebuild(int64_t total_token_capacity, int64_t target_frame_capacity) = 0;
+    virtual void prepare_request(const PackedInputs & inputs) = 0;
+    virtual void set_guidance_scale(float value) noexcept = 0;
+    virtual void update_generated_target_tokens(const PackedInputs & inputs) = 0;
+    virtual const std::vector<float> & compute_logits(double & compute_ms, double & readback_ms) = 0;
+    virtual int64_t total_token_capacity() const noexcept = 0;
+    virtual int64_t target_frame_capacity() const noexcept = 0;
+    virtual double rebuild_clear_ms() const noexcept = 0;
+    virtual double rebuild_build_ms() const noexcept = 0;
+    virtual double rebuild_alloc_ms() const noexcept = 0;
+    virtual double rebuild_init_ms() const noexcept = 0;
+};
+
+class ForwardGraph final : public GeneratorForwardGraph {
 public:
     ForwardGraph(
         std::shared_ptr<WeightsRuntime> runtime,
@@ -424,13 +441,13 @@ public:
     bool matches(
         const WeightsRuntime & runtime,
         int64_t total_tokens,
-        int64_t target_frames) const {
+        int64_t target_frames) const override {
         return runtime_.get() == &runtime &&
             total_tokens_capacity_ >= total_tokens &&
             target_frame_capacity_ >= target_frames;
     }
 
-    void rebuild(int64_t total_token_capacity, int64_t target_frame_capacity) {
+    void rebuild(int64_t total_token_capacity, int64_t target_frame_capacity) override {
         if (total_token_capacity <= 0 || target_frame_capacity <= 0) {
             throw std::runtime_error("OmniVoice generator total token capacity is invalid");
         }
@@ -604,7 +621,7 @@ public:
         rebuild_init_ms_ = engine::debug::elapsed_ms(init_start, init_end);
     }
 
-    void prepare_request(const PackedInputs & inputs) {
+    void prepare_request(const PackedInputs & inputs) override {
         const int64_t total_tokens =
             inputs.style_tokens + inputs.text_tokens + inputs.reference_frames + inputs.target_frames;
         if (total_tokens <= 0 ||
@@ -694,11 +711,11 @@ public:
         }
     }
 
-    void set_guidance_scale(float value) noexcept {
+    void set_guidance_scale(float value) noexcept override {
         guidance_scale_host_ = value;
     }
 
-    void update_generated_target_tokens(const PackedInputs & inputs) {
+    void update_generated_target_tokens(const PackedInputs & inputs) override {
         if (current_total_tokens_ <= 0 || current_target_frames_ != inputs.target_frames) {
             throw std::runtime_error("OmniVoice generator target token update requires a prepared request");
         }
@@ -730,7 +747,7 @@ public:
         }
     }
 
-    const std::vector<float> & compute_logits(double & compute_ms, double & readback_ms) {
+    const std::vector<float> & compute_logits(double & compute_ms, double & readback_ms) override {
         if (current_total_tokens_ <= 0 || current_target_frames_ <= 0) {
             throw std::runtime_error("OmniVoice generator compute requires a prepared request");
         }
@@ -758,16 +775,16 @@ public:
         return logits_host_;
     }
 
-    int64_t total_token_capacity() const noexcept {
+    int64_t total_token_capacity() const noexcept override {
         return total_tokens_capacity_;
     }
-    int64_t target_frame_capacity() const noexcept {
+    int64_t target_frame_capacity() const noexcept override {
         return target_frame_capacity_;
     }
-    double rebuild_clear_ms() const noexcept { return rebuild_clear_ms_; }
-    double rebuild_build_ms() const noexcept { return rebuild_build_ms_; }
-    double rebuild_alloc_ms() const noexcept { return rebuild_alloc_ms_; }
-    double rebuild_init_ms() const noexcept { return rebuild_init_ms_; }
+    double rebuild_clear_ms() const noexcept override { return rebuild_clear_ms_; }
+    double rebuild_build_ms() const noexcept override { return rebuild_build_ms_; }
+    double rebuild_alloc_ms() const noexcept override { return rebuild_alloc_ms_; }
+    double rebuild_init_ms() const noexcept override { return rebuild_init_ms_; }
 
 private:
     void clear_graph() {
@@ -972,6 +989,8 @@ private:
     double rebuild_init_ms_ = 0.0;
     std::vector<ggml_backend_buffer_t> buffers_;
 };
+
+#include "generator_layerwise.inc"
 
 std::pair<int32_t, float> argmax_with_value_excluding_mask(const float * values, int64_t count, int64_t mask_id) {
     int32_t best_index = -1;
@@ -1253,7 +1272,8 @@ struct OmniVoiceGeneratorRuntime::Impl {
     std::shared_ptr<const OmniVoiceAssets> assets;
     size_t graph_arena_bytes = 0;
     std::shared_ptr<WeightsRuntime> runtime;
-    std::unique_ptr<ForwardGraph> forward_graph;
+    std::unique_ptr<GeneratorForwardGraph> forward_graph;
+    bool mem_saver = false;
     OmniVoiceGeneratorRuntimeStats last_stats = {};
     std::mt19937 rng{std::random_device{}()};
 };
@@ -1264,7 +1284,8 @@ OmniVoiceGeneratorRuntime::OmniVoiceGeneratorRuntime(
     size_t prefill_graph_arena_bytes,
     size_t decode_graph_arena_bytes,
     size_t weight_context_bytes,
-    assets_ns::TensorStorageType weight_storage_type)
+    assets_ns::TensorStorageType weight_storage_type,
+    bool mem_saver)
     : impl_(std::make_unique<Impl>()) {
     if (assets == nullptr) {
         throw std::runtime_error("OmniVoice generator requires assets");
@@ -1279,6 +1300,7 @@ OmniVoiceGeneratorRuntime::OmniVoiceGeneratorRuntime(
         execution_context,
         weight_context_bytes,
         weight_storage_type);
+    impl_->mem_saver = mem_saver;
 }
 
 OmniVoiceGeneratorRuntime::~OmniVoiceGeneratorRuntime() = default;
@@ -1330,11 +1352,19 @@ OmniVoiceGeneratedAudioTokens OmniVoiceGeneratorRuntime::generate(
     if (needs_rebuild) {
         const auto rebuild_start = Clock::now();
         if (impl_->forward_graph == nullptr) {
-            impl_->forward_graph = std::make_unique<ForwardGraph>(
-                impl_->runtime,
-                impl_->graph_arena_bytes,
-                required_total_tokens,
-                packed.target_frames);
+            if (impl_->mem_saver) {
+                impl_->forward_graph = std::make_unique<LayerwiseForwardGraph>(
+                    impl_->runtime,
+                    impl_->graph_arena_bytes,
+                    required_total_tokens,
+                    packed.target_frames);
+            } else {
+                impl_->forward_graph = std::make_unique<ForwardGraph>(
+                    impl_->runtime,
+                    impl_->graph_arena_bytes,
+                    required_total_tokens,
+                    packed.target_frames);
+            }
         } else {
             impl_->forward_graph->rebuild(required_total_tokens, packed.target_frames);
         }

@@ -40,6 +40,7 @@ namespace assets_ns = engine::assets;
 namespace modules = engine::modules;
 constexpr float kTargetReferenceRms = 0.1F;
 constexpr float kSilenceThresholdDb = -50.0F;
+constexpr int64_t kMaxReferenceAudioMs = 10000;
 
 struct GgmlContextDeleter {
     void operator()(ggml_context * ctx) const noexcept {
@@ -403,6 +404,11 @@ std::vector<float> preprocess_reference_mono(
     }
     mono_pcm16 = remove_mid_silence_pcm16(mono_pcm16, sample_rate, 200, 200, kSilenceThresholdDb);
     mono_pcm16 = trim_edges_pcm16(mono_pcm16, sample_rate, 100, 200, kSilenceThresholdDb);
+    mono_pcm16 = slice_pcm16_ms(
+        mono_pcm16,
+        sample_rate,
+        0,
+        std::min<int64_t>(kMaxReferenceAudioMs, samples_to_ms(mono_pcm16.size(), sample_rate)));
     if (mono_pcm16.empty()) {
         throw std::runtime_error(
             "OmniVoice reference audio is empty after silence removal; try preprocess_prompt=false");
@@ -2158,29 +2164,26 @@ struct DecoderGraph {
                     static_cast<size_t>(frame_capacity_) * sizeof(int32_t));
             }
         }
-        if (last_frames_ != codes.frames) {
-            std::fill(decoder_frame_mask_host_.begin(), decoder_frame_mask_host_.end(), 0.0F);
-            std::fill_n(decoder_frame_mask_host_.begin(), static_cast<size_t>(codes.frames), 1.0F);
-            if (frame_capacity_ > 0) {
-                ggml_backend_tensor_set(
-                    decoder_frame_mask_.tensor,
-                    decoder_frame_mask_host_.data(),
-                    0,
-                    static_cast<size_t>(frame_capacity_) * sizeof(float));
-            }
-            int64_t current_length = codes.frames;
-            for (size_t i = 0; i < decoder_block_masks_.size(); ++i) {
-                current_length *= assets_->config.audio_tokenizer.acoustic_model.upsampling_ratios[i];
-                auto & block_mask = decoder_block_mask_host_[i];
-                std::fill(block_mask.begin(), block_mask.end(), 0.0F);
-                std::fill_n(block_mask.begin(), static_cast<size_t>(current_length), 1.0F);
-                ggml_backend_tensor_set(
-                    decoder_block_masks_[i].tensor,
-                    block_mask.data(),
-                    0,
-                    static_cast<size_t>(decoder_block_masks_[i].shape.dims[2]) * sizeof(float));
-            }
-            last_frames_ = codes.frames;
+        std::fill(decoder_frame_mask_host_.begin(), decoder_frame_mask_host_.end(), 0.0F);
+        std::fill_n(decoder_frame_mask_host_.begin(), static_cast<size_t>(codes.frames), 1.0F);
+        if (frame_capacity_ > 0) {
+            ggml_backend_tensor_set(
+                decoder_frame_mask_.tensor,
+                decoder_frame_mask_host_.data(),
+                0,
+                static_cast<size_t>(frame_capacity_) * sizeof(float));
+        }
+        int64_t current_length = codes.frames;
+        for (size_t i = 0; i < decoder_block_masks_.size(); ++i) {
+            current_length *= assets_->config.audio_tokenizer.acoustic_model.upsampling_ratios[i];
+            auto & block_mask = decoder_block_mask_host_[i];
+            std::fill(block_mask.begin(), block_mask.end(), 0.0F);
+            std::fill_n(block_mask.begin(), static_cast<size_t>(current_length), 1.0F);
+            ggml_backend_tensor_set(
+                decoder_block_masks_[i].tensor,
+                block_mask.data(),
+                0,
+                static_cast<size_t>(decoder_block_masks_[i].shape.dims[2]) * sizeof(float));
         }
         core::set_backend_threads(backend_, compute_threads_);
         const ggml_status status = engine::core::compute_backend_graph(backend_, graph_);
@@ -2216,7 +2219,6 @@ private:
         code_inputs_.clear();
         decoder_block_masks_.clear();
         ctx_.reset();
-        last_frames_ = -1;
     }
 
     std::shared_ptr<const OmniVoiceAssets> assets_;
@@ -2236,7 +2238,6 @@ private:
     std::vector<std::vector<int32_t>> code_input_host_;
     std::vector<float> decoder_frame_mask_host_;
     std::vector<std::vector<float>> decoder_block_mask_host_;
-    int64_t last_frames_ = -1;
     ggml_tensor * output_ = nullptr;
 };
 

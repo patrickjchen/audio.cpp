@@ -43,7 +43,7 @@ bool mem_saver_from_options(const runtime::SessionOptions & options) {
     if (const auto value = runtime::find_option(options.options, {"omnivoice.mem_saver", "mem_saver"})) {
         return runtime::parse_bool_option(*value, "omnivoice.mem_saver");
     }
-    return false;
+    return true;
 }
 
 using Clock = std::chrono::steady_clock;
@@ -210,7 +210,8 @@ OmniVoiceSession::OmniVoiceSession(
           generator_prefill_graph_arena_bytes_,
           generator_decode_graph_arena_bytes_,
           generator_weight_context_bytes_,
-          generator_weight_storage_type_) {
+          generator_weight_storage_type_,
+          mem_saver_) {
     if (task_.task != runtime::VoiceTaskKind::Tts) {
         throw std::runtime_error("OmniVoice only supports VoiceTaskKind::Tts");
     }

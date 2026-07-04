@@ -81,7 +81,7 @@ public:
         };
         inspection.metadata.weight_candidates = {"model.safetensors", "audio_tokenizer/model.safetensors"};
         inspection.cli.session_options = {
-            {"omnivoice.mem_saver", "true|false", "Release staged runtime graphs after request phases; default false."},
+            {"omnivoice.mem_saver", "true|false", "Release staged runtime graphs after request phases; default true."},
         };
         inspection.capabilities.supported_tasks = {
             {runtime::VoiceTaskKind::Tts, {runtime::RunMode::Offline}},
