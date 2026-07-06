@@ -10,6 +10,7 @@ VULKAN_MODE="off"
 WITH_TESTS="OFF"
 WITH_EXAMPLES="OFF"
 WITH_WARMBENCH="OFF"
+NATIVE_CPU="ON"
 TARGETS=()
 JOBS=""
 
@@ -62,6 +63,21 @@ while [[ $# -gt 0 ]]; do
         --with-warmbench)
             WITH_WARMBENCH="ON"
             shift
+            ;;
+        --native-cpu)
+            case "$2" in
+                ON|on|On|1|true|TRUE|yes|YES)
+                    NATIVE_CPU="ON"
+                    ;;
+                OFF|off|Off|0|false|FALSE|no|NO)
+                    NATIVE_CPU="OFF"
+                    ;;
+                *)
+                    echo "--native-cpu must be ON or OFF" >&2
+                    exit 1
+                    ;;
+            esac
+            shift 2
             ;;
         --target)
             TARGETS+=("$2")
@@ -161,6 +177,7 @@ echo "Using generator: $GENERATOR"
 echo "Using build dir: $BUILD_DIR"
 echo "Including CUDA backend: $ENGINE_ENABLE_CUDA"
 echo "Including Vulkan backend: $ENGINE_ENABLE_VULKAN"
+echo "Native CPU optimization: $NATIVE_CPU"
 echo "Building examples: $WITH_EXAMPLES"
 echo "Building tests: $WITH_TESTS"
 echo "Building warmbench: $WITH_WARMBENCH"
@@ -172,6 +189,7 @@ echo "Building warmbench: $WITH_WARMBENCH"
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     -DENGINE_ENABLE_CUDA="$ENGINE_ENABLE_CUDA" \
     -DENGINE_ENABLE_VULKAN="$ENGINE_ENABLE_VULKAN" \
+    -DENGINE_ENABLE_NATIVE_CPU="$NATIVE_CPU" \
     -DENGINE_BUILD_EXAMPLES="$WITH_EXAMPLES" \
     -DENGINE_BUILD_TESTS="$WITH_TESTS" \
     -DENGINE_BUILD_WARMBENCH="$WITH_WARMBENCH"
