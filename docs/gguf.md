@@ -5,6 +5,22 @@ package spec. GGUF is a container for tensors and sidecar files; it is not a uni
 adapter for arbitrary llama.cpp or whisper.cpp GGUF files. The tensor names and embedded
 metadata still have to match the selected `--family`.
 
+Package specs are maintained as `model_specs/*.json` in the source tree and compiled
+into `engine_runtime` during the CMake build. CLI/server deployments do not need to
+ship those JSON files separately.
+
+Use the built-in spec normally. Developers can test a modified layout without rebuilding:
+
+```bash
+audiocpp_cli --inspect --family qwen3_asr --model /path/to/model.gguf \
+  --model-spec-override /path/to/qwen3_asr.json
+```
+
+The override may also be a directory containing `<family>.json`. The server supports
+the same command-line option and a `model_spec_override` field either at the top level
+or inside an individual model entry. A per-model field takes precedence over the
+server-wide value.
+
 ## Build The Converter
 
 ```bash

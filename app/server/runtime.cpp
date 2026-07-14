@@ -647,6 +647,9 @@ void ServerState::ensure_model_loaded_locked(LoadedModel & model) {
 
     engine::runtime::ModelLoadRequest load_request;
     load_request.model_path = model.config.path;
+    load_request.model_spec_override = model.config.model_spec_override.has_value()
+        ? model.config.model_spec_override
+        : config_.model_spec_override;
     load_request.family_hint = model.config.family;
     load_request.config_id = model.config.config_id;
     load_request.weight_id = model.config.weight_id;

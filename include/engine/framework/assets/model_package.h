@@ -3,6 +3,7 @@
 #include "engine/framework/assets/resource_bundle.h"
 
 #include <filesystem>
+#include <optional>
 #include <string_view>
 
 namespace engine::assets {
@@ -10,6 +11,18 @@ namespace engine::assets {
 enum class ModelPackageResourceKind {
     Files,
     Tensors,
+};
+
+class ScopedModelPackageSpecOverride {
+public:
+    explicit ScopedModelPackageSpecOverride(const std::optional<std::filesystem::path> & path);
+    ~ScopedModelPackageSpecOverride();
+
+    ScopedModelPackageSpecOverride(const ScopedModelPackageSpecOverride &) = delete;
+    ScopedModelPackageSpecOverride & operator=(const ScopedModelPackageSpecOverride &) = delete;
+
+private:
+    std::optional<std::filesystem::path> previous_;
 };
 
 [[nodiscard]] std::filesystem::path default_model_package_spec_path(std::string_view family);

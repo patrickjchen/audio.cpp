@@ -5,11 +5,35 @@
 
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <optional>
 
 namespace engine::assets {
 namespace {
+
+thread_local std::optional<std::filesystem::path> active_model_spec_override;
+
+const std::unordered_map<std::string, std::string_view> & builtin_model_specs() {
+    static const std::unordered_map<std::string, std::string_view> specs = {
+#include "model_package_specs.inc"
+    };
+    return specs;
+}
+
+std::optional<std::string_view> builtin_model_spec(const std::filesystem::path & spec_path) {
+    if (spec_path.parent_path() != "@builtin") return std::nullopt;
+    const auto it = builtin_model_specs().find(spec_path.stem().string());
+    if (it == builtin_model_specs().end()) return std::nullopt;
+    return it->second;
+}
+
+engine::io::json::Value parse_model_spec(const std::filesystem::path & spec_path) {
+    if (const auto text = builtin_model_spec(spec_path)) {
+        return engine::io::json::parse(*text);
+    }
+    return engine::io::json::parse_file(spec_path);
+}
 
 std::filesystem::path resolve_model_root(const std::filesystem::path & model_path) {
     if (engine::io::is_existing_directory(model_path)) {
@@ -207,7 +231,7 @@ SelectedSource require_selected_source(
     const std::filesystem::path & model_path,
     const std::filesystem::path & spec_path) {
     const auto model_root = resolve_model_root(model_path);
-    const auto spec = engine::io::json::parse_file(spec_path);
+    const auto spec = parse_model_spec(spec_path);
     const auto & sources = spec.require("sources").as_array();
     const auto prepared = prepare_model_directory(model_path);
     const bool explicit_gguf_path = engine::io::is_existing_file(model_path) &&
@@ -231,21 +255,31 @@ SelectedSource require_selected_source(
 
 }  // namespace
 
+ScopedModelPackageSpecOverride::ScopedModelPackageSpecOverride(
+    const std::optional<std::filesystem::path> & path)
+    : previous_(active_model_spec_override) {
+    active_model_spec_override = path;
+}
+
+ScopedModelPackageSpecOverride::~ScopedModelPackageSpecOverride() {
+    active_model_spec_override = std::move(previous_);
+}
+
 std::filesystem::path default_model_package_spec_path(std::string_view family) {
-    const std::filesystem::path relative = std::filesystem::path("model_specs") / (std::string(family) + ".json");
-    auto cursor = std::filesystem::current_path();
-    while (true) {
-        const auto candidate = cursor / relative;
-        if (engine::io::is_existing_file(candidate)) {
-            return std::filesystem::weakly_canonical(candidate);
+    if (active_model_spec_override.has_value()) {
+        auto path = *active_model_spec_override;
+        if (engine::io::is_existing_directory(path)) {
+            path /= std::string(family) + ".json";
         }
-        const auto parent = cursor.parent_path();
-        if (parent == cursor || parent.empty()) {
-            break;
+        if (!engine::io::is_existing_file(path)) {
+            throw std::runtime_error("model package spec override not found: " + path.string());
         }
-        cursor = parent;
+        return std::filesystem::weakly_canonical(path);
     }
-    throw std::runtime_error("model package spec not found: " + relative.string());
+    if (builtin_model_specs().find(std::string(family)) == builtin_model_specs().end()) {
+        throw std::runtime_error("built-in model package spec not found: " + std::string(family));
+    }
+    return std::filesystem::path("@builtin") / (std::string(family) + ".json");
 }
 
 ResourceBundle load_resource_bundle_from_package_spec(

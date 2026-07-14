@@ -589,6 +589,7 @@ void run_model_step_impl(
 
     engine::runtime::ModelLoadRequest load_request;
     load_request.model_path = resolve_workflow_path(workflow_string(step, "model"), context);
+    load_request.model_spec_override = options.model_spec_override;
     if (const auto family = workflow_optional_string(step, "family")) {
         load_request.family_hint = *family;
     }
@@ -763,6 +764,7 @@ void run_chunked_model_step(
 
     engine::runtime::ModelLoadRequest load_request;
     load_request.model_path = resolve_workflow_path(workflow_string(step, "model"), context);
+    load_request.model_spec_override = options.model_spec_override;
     if (const auto family = workflow_optional_string(step, "family")) {
         load_request.family_hint = *family;
     }
@@ -974,6 +976,7 @@ void run_model_step_foreach(
 
     engine::runtime::ModelLoadRequest load_request;
     load_request.model_path = resolve_workflow_path(workflow_string(step, "model"), context);
+    load_request.model_spec_override = options.model_spec_override;
     if (const auto family = workflow_optional_string(step, "family")) {
         load_request.family_hint = *family;
     }
