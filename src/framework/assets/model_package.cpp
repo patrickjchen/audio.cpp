@@ -1,18 +1,25 @@
 #include "engine/framework/assets/model_package.h"
 
+#include "engine/framework/assets/tensor_source.h"
 #include "engine/framework/io/filesystem.h"
 #include "engine/framework/io/json.h"
 
+#include <algorithm>
+#include <cctype>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <optional>
+#include <vector>
 
 namespace engine::assets {
 namespace {
 
 thread_local std::optional<std::filesystem::path> active_model_spec_override;
+thread_local std::optional<std::filesystem::path> active_model_path;
+thread_local bool active_embedded_spec_checked = false;
+thread_local std::optional<GgufEmbeddedModelSpec> active_embedded_spec;
 
 const std::unordered_map<std::string, std::string_view> & builtin_model_specs() {
     static const std::unordered_map<std::string, std::string_view> specs = {
@@ -22,13 +29,96 @@ const std::unordered_map<std::string, std::string_view> & builtin_model_specs() 
 }
 
 std::optional<std::string_view> builtin_model_spec(const std::filesystem::path & spec_path) {
-    if (spec_path.parent_path() != "@builtin") return std::nullopt;
+    if (spec_path.parent_path() != "@builtin")
+        return std::nullopt;
     const auto it = builtin_model_specs().find(spec_path.stem().string());
-    if (it == builtin_model_specs().end()) return std::nullopt;
+    if (it == builtin_model_specs().end())
+        return std::nullopt;
     return it->second;
 }
 
+bool is_gguf_file(const std::filesystem::path & path) {
+    if (!engine::io::is_existing_file(path))
+        return false;
+    std::string extension = path.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    return extension == ".gguf";
+}
+
+std::optional<std::filesystem::path> active_gguf_path() {
+    if (!active_model_path.has_value())
+        return std::nullopt;
+    const auto & path = *active_model_path;
+    if (is_gguf_file(path)) {
+        return std::filesystem::weakly_canonical(path);
+    }
+    if (engine::io::is_existing_directory(path) && engine::io::is_existing_file(path / "model.gguf")) {
+        return std::filesystem::weakly_canonical(path / "model.gguf");
+    }
+    return std::nullopt;
+}
+
+const std::optional<GgufEmbeddedModelSpec> & embedded_model_spec() {
+    if (!active_embedded_spec_checked) {
+        active_embedded_spec_checked = true;
+        if (const auto gguf = active_gguf_path()) {
+            active_embedded_spec = read_gguf_embedded_model_spec(*gguf);
+        }
+    }
+    return active_embedded_spec;
+}
+
+bool external_spec_matches_family(const std::filesystem::path & path, std::string_view family) {
+    if (!engine::io::is_existing_file(path))
+        return false;
+    try {
+        const auto root = engine::io::json::parse_file(path);
+        return engine::io::json::require_string(root, "family") == family;
+    } catch (...) {
+        return false;
+    }
+}
+
+std::optional<std::filesystem::path> discover_external_model_spec(std::string_view family) {
+    std::vector<std::filesystem::path> candidates;
+    if (active_model_path.has_value()) {
+        const auto root = engine::io::is_existing_directory(*active_model_path) ? *active_model_path
+                                                                                : active_model_path->parent_path();
+        candidates.push_back(root / "model_specs" / (std::string(family) + ".json"));
+        candidates.push_back(root / (std::string(family) + ".json"));
+        candidates.push_back(root / "model_spec.json");
+        candidates.push_back(root.parent_path() / "model_specs" / (std::string(family) + ".json"));
+    }
+    auto cursor = std::filesystem::current_path();
+    while (true) {
+        candidates.push_back(cursor / "model_specs" / (std::string(family) + ".json"));
+        const auto parent = cursor.parent_path();
+        if (parent == cursor || parent.empty())
+            break;
+        cursor = parent;
+    }
+    for (const auto & candidate : candidates) {
+        if (external_spec_matches_family(candidate, family)) {
+            return std::filesystem::weakly_canonical(candidate);
+        }
+    }
+    return std::nullopt;
+}
+
 engine::io::json::Value parse_model_spec(const std::filesystem::path & spec_path) {
+    if (spec_path.parent_path() == "@gguf") {
+        const auto & spec = embedded_model_spec();
+        if (!spec.has_value() || spec->family != spec_path.stem().string()) {
+            throw std::runtime_error("embedded GGUF model package spec is not available for: " +
+                                     spec_path.stem().string());
+        }
+        auto root = engine::io::json::parse(spec->json);
+        if (engine::io::json::require_string(root, "family") != spec->family) {
+            throw std::runtime_error("embedded GGUF model package spec family metadata does not match its JSON");
+        }
+        return root;
+    }
     if (const auto text = builtin_model_spec(spec_path)) {
         return engine::io::json::parse(*text);
     }
@@ -51,9 +141,7 @@ std::string require_source_format(const engine::io::json::Value & source) {
 
 using ResourceRoots = std::unordered_map<std::string, std::filesystem::path>;
 
-ResourceRoots resolve_source_roots(
-    const std::filesystem::path & model_root,
-    const engine::io::json::Value & source,
+ResourceRoots resolve_source_roots(const std::filesystem::path & model_root, const engine::io::json::Value & source,
     const std::optional<std::filesystem::path> & standalone_gguf) {
     ResourceRoots roots;
     const auto & root_object = source.require("roots").as_object();
@@ -62,9 +150,7 @@ ResourceRoots resolve_source_roots(
         if (root_value == "$gguf" && !standalone_gguf.has_value()) {
             throw std::runtime_error("model package source requires a GGUF root: " + id);
         }
-        const auto root_path = root_value == "$gguf"
-            ? *standalone_gguf
-            : model_root / root_value;
+        const auto root_path = root_value == "$gguf" ? *standalone_gguf : model_root / root_value;
         if (!engine::io::is_existing_directory(root_path) && !engine::io::is_existing_file(root_path)) {
             throw std::runtime_error("missing model package root: " + id + "=" + root_path.string());
         }
@@ -73,8 +159,7 @@ ResourceRoots resolve_source_roots(
     return roots;
 }
 
-std::filesystem::path resolve_resource_ref(
-    const std::unordered_map<std::string, std::filesystem::path> & roots,
+std::filesystem::path resolve_resource_ref(const std::unordered_map<std::string, std::filesystem::path> & roots,
     const std::string & ref) {
     const auto split = ref.find(':');
     if (split == std::string::npos || split == 0) {
@@ -92,10 +177,7 @@ std::filesystem::path resolve_resource_ref(
     return root_it->second / relative_path;
 }
 
-void add_resource_map(
-    ResourceBundle & bundle,
-    const ResourceRoots & roots,
-    const engine::io::json::Value * map_value) {
+void add_resource_map(ResourceBundle & bundle, const ResourceRoots & roots, const engine::io::json::Value * map_value) {
     if (map_value == nullptr || map_value->is_null()) {
         return;
     }
@@ -108,9 +190,7 @@ void add_resource_map(
     }
 }
 
-std::filesystem::path resolve_tensor_source_ref(
-    const ResourceRoots & roots,
-    const engine::io::json::Value & value,
+std::filesystem::path resolve_tensor_source_ref(const ResourceRoots & roots, const engine::io::json::Value & value,
     std::string & prefix) {
     if (value.is_string()) {
         prefix.clear();
@@ -126,10 +206,7 @@ std::filesystem::path resolve_tensor_source_ref(
     return resolve_resource_ref(roots, source_it->second.as_string());
 }
 
-void add_tensor_map(
-    ResourceBundle & bundle,
-    const ResourceRoots & roots,
-    const engine::io::json::Value * map_value) {
+void add_tensor_map(ResourceBundle & bundle, const ResourceRoots & roots, const engine::io::json::Value * map_value) {
     if (map_value == nullptr || map_value->is_null()) {
         return;
     }
@@ -143,9 +220,7 @@ void add_tensor_map(
     }
 }
 
-void add_optional_resource_map(
-    ResourceBundle & bundle,
-    const ResourceRoots & roots,
+void add_optional_resource_map(ResourceBundle & bundle, const ResourceRoots & roots,
     const engine::io::json::Value * map_value) {
     if (map_value == nullptr || map_value->is_null()) {
         return;
@@ -158,10 +233,8 @@ void add_optional_resource_map(
     }
 }
 
-std::vector<ResourceFile> resources_from_resource_map(
-    const ResourceRoots & roots,
-    const engine::io::json::Value * map_value,
-    bool required) {
+std::vector<ResourceFile> resources_from_resource_map(const ResourceRoots & roots,
+                                                      const engine::io::json::Value * map_value, bool required) {
     std::vector<ResourceFile> assets;
     if (map_value == nullptr || map_value->is_null()) {
         return assets;
@@ -178,9 +251,7 @@ std::vector<ResourceFile> resources_from_resource_map(
     return assets;
 }
 
-ResourceBundle load_source(
-    const std::filesystem::path & model_root,
-    const engine::io::json::Value & source,
+ResourceBundle load_source(const std::filesystem::path & model_root, const engine::io::json::Value & source,
     const ResourceRoots & roots) {
     ResourceBundle bundle(model_root);
     add_resource_map(bundle, roots, source.find("files"));
@@ -189,14 +260,11 @@ ResourceBundle load_source(
     return bundle;
 }
 
-std::vector<ResourceFile> discover_safetensors_source_resources(
-    const engine::io::json::Value & source,
+std::vector<ResourceFile> discover_safetensors_source_resources(const engine::io::json::Value & source,
     ModelPackageResourceKind kind,
     const ResourceRoots & roots) {
     auto resources = resources_from_resource_map(
-        roots,
-        source.find(kind == ModelPackageResourceKind::Files ? "files" : "tensors"),
-        true);
+        roots, source.find(kind == ModelPackageResourceKind::Files ? "files" : "tensors"), true);
     if (kind == ModelPackageResourceKind::Files) {
         auto optional = resources_from_resource_map(roots, source.find("optional_files"), false);
         resources.insert(resources.end(), optional.begin(), optional.end());
@@ -210,9 +278,7 @@ struct SelectedSource {
     ResourceRoots roots;
 };
 
-SelectedSource select_source(
-    const std::filesystem::path & model_path,
-    const std::filesystem::path & model_root,
+SelectedSource select_source(const std::filesystem::path & model_path, const std::filesystem::path & model_root,
     const engine::io::json::Value & source) {
     const auto format = require_source_format(source);
     if (format == "gguf") {
@@ -227,42 +293,41 @@ SelectedSource select_source(
     throw std::runtime_error("unsupported model package source format: " + format);
 }
 
-SelectedSource require_selected_source(
-    const std::filesystem::path & model_path,
+SelectedSource require_selected_source(const std::filesystem::path & model_path,
     const std::filesystem::path & spec_path) {
     const auto model_root = resolve_model_root(model_path);
     const auto spec = parse_model_spec(spec_path);
     const auto & sources = spec.require("sources").as_array();
-    const auto prepared = prepare_model_directory(model_path);
-    const bool explicit_gguf_path = engine::io::is_existing_file(model_path) &&
-        model_path.extension() == ".gguf";
-    const bool directory_has_gguf = engine::io::is_existing_directory(model_path) &&
-        engine::io::is_existing_file(model_path / "model.gguf");
+    const bool explicit_gguf_path = is_gguf_file(model_path);
+    const bool directory_has_gguf =
+        engine::io::is_existing_directory(model_path) && engine::io::is_existing_file(model_path / "model.gguf");
     const bool use_gguf = explicit_gguf_path || directory_has_gguf;
-    if (use_gguf && !prepared.standalone_gguf.has_value()) {
-        throw std::runtime_error("model package GGUF source requires embedded sidecars: " + model_path.string());
-    }
     for (const auto & source : sources) {
         const auto format = require_source_format(source);
         if ((use_gguf && format == "gguf") || (!use_gguf && format == "safetensors")) {
             return select_source(model_path, model_root, source);
         }
     }
-    throw std::runtime_error(
-        std::string("no ") + (use_gguf ? "gguf" : "safetensors") +
-        " model package source in " + spec_path.string());
+    throw std::runtime_error(std::string("no ") + (use_gguf ? "gguf" : "safetensors") + " model package source in " +
+                             spec_path.string());
 }
 
 }  // namespace
 
-ScopedModelPackageSpecOverride::ScopedModelPackageSpecOverride(
-    const std::optional<std::filesystem::path> & path)
-    : previous_(active_model_spec_override) {
+ScopedModelPackageSpecOverride::ScopedModelPackageSpecOverride(const std::optional<std::filesystem::path> & path,
+                                                               const std::filesystem::path & model_path)
+    : previous_(active_model_spec_override), previous_model_path_(active_model_path) {
     active_model_spec_override = path;
+    active_model_path = model_path.empty() ? std::nullopt : std::make_optional(model_path);
+    active_embedded_spec_checked = false;
+    active_embedded_spec.reset();
 }
 
 ScopedModelPackageSpecOverride::~ScopedModelPackageSpecOverride() {
     active_model_spec_override = std::move(previous_);
+    active_model_path = std::move(previous_model_path_);
+    active_embedded_spec_checked = false;
+    active_embedded_spec.reset();
 }
 
 std::filesystem::path default_model_package_spec_path(std::string_view family) {
@@ -276,10 +341,23 @@ std::filesystem::path default_model_package_spec_path(std::string_view family) {
         }
         return std::filesystem::weakly_canonical(path);
     }
-    if (builtin_model_specs().find(std::string(family)) == builtin_model_specs().end()) {
-        throw std::runtime_error("built-in model package spec not found: " + std::string(family));
+    if (const auto & embedded = embedded_model_spec(); embedded.has_value()) {
+        if (embedded->family != family) {
+            throw std::runtime_error("GGUF embeds package spec for family '" + embedded->family + "', not '" +
+                                     std::string(family) + "'");
+        }
+        return std::filesystem::path("@gguf") / (std::string(family) + ".json");
     }
-    return std::filesystem::path("@builtin") / (std::string(family) + ".json");
+    if (builtin_model_specs().find(std::string(family)) != builtin_model_specs().end()) {
+        return std::filesystem::path("@builtin") / (std::string(family) + ".json");
+    }
+    if (const auto external = discover_external_model_spec(family)) {
+        return *external;
+    }
+    throw std::runtime_error("model package spec not found for family '" + std::string(family) +
+                             "' (provide --model-spec-override, embed it in the GGUF, enable "
+                             "AUDIOCPP_DEPLOYMENT_BUILD, or install model_specs/" +
+                             std::string(family) + ".json)");
 }
 
 ResourceBundle load_resource_bundle_from_package_spec(

@@ -50,7 +50,7 @@ void print_task_list_help() {
         << "    --device <n>\n"
         << "    --threads <n>  Backend and OpenMP worker threads, default 4\n"
         << "    --registry-config <path>\n"
-        << "    --model-spec-override <json-or-directory>  Override the built-in package spec\n"
+        << "    --model-spec-override <json-or-directory>  Override package-spec resolution\n"
         << "    --config <id>\n"
         << "    --weight <id>\n"
         << "    --log  Stream framework progress and timing logs to stdout\n"

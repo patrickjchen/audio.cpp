@@ -121,7 +121,7 @@ bool ModelRegistry::supports_family(const std::string & family) const noexcept {
 }
 
 ModelInspection ModelRegistry::inspect(const ModelLoadRequest & request) const {
-    engine::assets::ScopedModelPackageSpecOverride spec_override(request.model_spec_override);
+    engine::assets::ScopedModelPackageSpecOverride spec_override(request.model_spec_override, request.model_path);
     validate_request(request);
     const auto * loader = find_loader(request);
     if (loader == nullptr) {
@@ -137,7 +137,7 @@ ModelInspection ModelRegistry::inspect(const std::filesystem::path & model_path)
 }
 
 std::unique_ptr<ILoadedVoiceModel> ModelRegistry::load(const ModelLoadRequest & request) const {
-    engine::assets::ScopedModelPackageSpecOverride spec_override(request.model_spec_override);
+    engine::assets::ScopedModelPackageSpecOverride spec_override(request.model_spec_override, request.model_path);
     validate_request(request);
     const auto * loader = find_loader(request);
     if (loader == nullptr) {

@@ -709,21 +709,48 @@ remain architecture-specific. Qwen3 ASR, Qwen3 Forced Aligner, Qwen3 TTS, Nemotr
 3.5 ASR, VibeVoice-ASR, Higgs Audio STT, Hviske ASR, and Citrinet ASR currently accept
 `model.gguf` (including `speech_tokenizer/model.gguf` for TTS). The converter recursively embeds sidecar files
 up to 64 MiB by default using binary-safe metadata, including nested tokenizer models,
-and Qwen3 ASR, Nemotron ASR, VibeVoice-ASR, Higgs Audio STT, Hviske ASR, and Citrinet
-ASR can load the resulting `model.gguf` as a standalone file. Pass `--no-sidecars` when a
-tensor-only container is desired. A
+and Qwen3 ASR, Nemotron ASR, VibeVoice-ASR, Higgs Audio STT, Hviske ASR, and Citrinet ASR
+can load the resulting `model.gguf` as a standalone file. The converter embeds the selected
+package spec in new GGUF files. Standalone conversion with embedded sidecars is the default
+and fails if required package resources are missing. Pass `--no-sidecars` only to explicitly
+create a tensor-only container; its package spec is still embedded and validated. A
 `model.safetensors.index.json` is also a first-class tensor source and is merged from
 its routed shards while converting. Exact original tensor ranks are stored separately
 because GGML normally collapses trailing singleton dimensions. Rank-0 safetensors
 scalars are stored physically as one-element GGML tensors while their scalar rank is
 preserved in the exact-shape metadata.
 
+| Format | Package spec source | External model files |
+|---|---|---:|
+| Safetensors | Override, deployment binary, or discovered `model_specs` | Yes |
+| New standalone GGUF | Embedded in GGUF | No |
+| New tensor-only GGUF created with `--no-sidecars` | Embedded in GGUF | Yes, required sidecars |
+| Legacy GGUF without embedded spec | Deployment binary or discovered `model_specs` | Depends on sidecars |
+
+At runtime the order is explicit override, GGUF metadata, compiled deployment spec, then
+external discovery. Configure with `-DAUDIOCPP_DEPLOYMENT_BUILD=ON` to compile the source
+catalog into CLI/server binaries; the option is off by default. For package-layout
+development or testing, the CLI and server can explicitly replace every fallback with
+`--model-spec-override <json-or-directory>`. When a directory is supplied, the runtime
+selects `<directory>/<family>.json`. The server configuration also accepts
+`model_spec_override` globally or per model. An override is trusted runtime input and
+should only point to a spec you control.
+
 ```bash
 build/bin/audiocpp_gguf \
   --input models/Qwen3-ASR-1.7B-hf/model.safetensors \
+  --family qwen3_asr \
   --output models/Qwen3-ASR-1.7B-hf/model.gguf \
   --type q8_0
 ```
+
+The converter discovers the spec from `--model-spec`, model `config.json`, the model
+root, a discovered external catalog, or its bundled conversion catalog. The converter
+catalog is always embedded in `audiocpp_gguf` even when `AUDIOCPP_DEPLOYMENT_BUILD` is
+off; that option controls the CLI/server fallback catalog. The converter validates the
+requested tensor namespaces and every required GGUF sidecar before writing. Use
+`--allow-missing-model-spec` only for a generic tensor archive that is not intended to be
+loaded by audio.cpp.
 
 Multi-component checkpoints can be packed into one GGUF with repeated namespaced
 inputs. Existing component loaders can open a namespace through
