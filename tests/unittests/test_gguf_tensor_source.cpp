@@ -256,6 +256,54 @@ void test_embedded_model_spec_roundtrip_and_precedence() {
     std::filesystem::remove_all(root);
 }
 
+void test_package_spec_errors_name_selected_spec() {
+    const auto root = std::filesystem::temp_directory_path() / "audiocpp_package_spec_error_test";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "model");
+    const auto malformed_spec = root / "malformed.json";
+    const auto missing_file_spec = root / "missing_file.json";
+
+    {
+        std::ofstream output(malformed_spec, std::ios::binary);
+        output << R"json({"family":"broken","sources":[)json";
+    }
+    {
+        std::ofstream output(missing_file_spec, std::ios::binary);
+        output << R"json({
+            "family":"missing_file_test",
+            "sources":[{
+                "format":"safetensors",
+                "roots":{"model":"."},
+                "files":{"config":"model:config.json"}
+            }]
+        })json";
+    }
+
+    bool malformed_named = false;
+    try {
+        (void)engine::assets::load_resource_bundle_from_package_spec(root / "model", malformed_spec);
+    } catch (const std::runtime_error & error) {
+        const std::string message = error.what();
+        malformed_named = message.find("failed to parse model package spec") != std::string::npos &&
+            message.find(malformed_spec.string()) != std::string::npos;
+    }
+    engine::test::require(malformed_named, "malformed package spec error did not name the selected spec");
+
+    bool selected_source_named = false;
+    try {
+        (void)engine::assets::load_resource_bundle_from_package_spec(root / "model", missing_file_spec);
+    } catch (const std::runtime_error & error) {
+        const std::string message = error.what();
+        selected_source_named = message.find("using model package spec") != std::string::npos &&
+            message.find(missing_file_spec.string()) != std::string::npos &&
+            message.find("source 'safetensors'") != std::string::npos &&
+            message.find("missing model package file 'config'") != std::string::npos;
+    }
+    engine::test::require(selected_source_named, "resource error did not name the selected spec and source");
+
+    std::filesystem::remove_all(root);
+}
+
 }  // namespace
 
 int main() {
@@ -264,6 +312,7 @@ int main() {
         test_packed_multi_source_gguf();
         test_all_rank0_gguf();
         test_embedded_model_spec_roundtrip_and_precedence();
+        test_package_spec_errors_name_selected_spec();
     } catch (const std::exception & error) {
         std::cerr << error.what() << '\n';
         return 1;

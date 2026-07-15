@@ -37,6 +37,16 @@ std::optional<std::string_view> builtin_model_spec(const std::filesystem::path &
     return it->second;
 }
 
+std::string model_spec_description(const std::filesystem::path & spec_path) {
+    if (spec_path.parent_path() == "@gguf") {
+        return "embedded GGUF model package spec for family '" + spec_path.stem().string() + "'";
+    }
+    if (spec_path.parent_path() == "@builtin") {
+        return "builtin model package spec for family '" + spec_path.stem().string() + "'";
+    }
+    return "model package spec '" + spec_path.string() + "'";
+}
+
 bool is_gguf_file(const std::filesystem::path & path) {
     if (!engine::io::is_existing_file(path))
         return false;
@@ -75,8 +85,9 @@ bool external_spec_matches_family(const std::filesystem::path & path, std::strin
     try {
         const auto root = engine::io::json::parse_file(path);
         return engine::io::json::require_string(root, "family") == family;
-    } catch (...) {
-        return false;
+    } catch (const std::exception & error) {
+        throw std::runtime_error("invalid candidate model package spec '" + path.string() +
+                                 "' while resolving family '" + std::string(family) + "': " + error.what());
     }
 }
 
@@ -276,19 +287,21 @@ struct SelectedSource {
     std::filesystem::path model_root;
     engine::io::json::Value source;
     ResourceRoots roots;
+    std::string spec_description;
+    std::string source_format;
 };
 
 SelectedSource select_source(const std::filesystem::path & model_path, const std::filesystem::path & model_root,
-    const engine::io::json::Value & source) {
+    const std::string & spec_description, const engine::io::json::Value & source) {
     const auto format = require_source_format(source);
     if (format == "gguf") {
         const auto prepared = prepare_model_directory(model_path);
         auto roots = resolve_source_roots(prepared.model_root, source, prepared.standalone_gguf);
-        return SelectedSource{prepared.model_root, source, std::move(roots)};
+        return SelectedSource{prepared.model_root, source, std::move(roots), spec_description, format};
     }
     if (format == "safetensors") {
         auto roots = resolve_source_roots(model_root, source, std::nullopt);
-        return SelectedSource{model_root, source, std::move(roots)};
+        return SelectedSource{model_root, source, std::move(roots), spec_description, format};
     }
     throw std::runtime_error("unsupported model package source format: " + format);
 }
@@ -296,7 +309,13 @@ SelectedSource select_source(const std::filesystem::path & model_path, const std
 SelectedSource require_selected_source(const std::filesystem::path & model_path,
     const std::filesystem::path & spec_path) {
     const auto model_root = resolve_model_root(model_path);
-    const auto spec = parse_model_spec(spec_path);
+    const auto spec_description = model_spec_description(spec_path);
+    engine::io::json::Value spec;
+    try {
+        spec = parse_model_spec(spec_path);
+    } catch (const std::exception & error) {
+        throw std::runtime_error("failed to parse " + spec_description + ": " + error.what());
+    }
     const auto & sources = spec.require("sources").as_array();
     const bool explicit_gguf_path = is_gguf_file(model_path);
     const bool directory_has_gguf =
@@ -305,11 +324,16 @@ SelectedSource require_selected_source(const std::filesystem::path & model_path,
     for (const auto & source : sources) {
         const auto format = require_source_format(source);
         if ((use_gguf && format == "gguf") || (!use_gguf && format == "safetensors")) {
-            return select_source(model_path, model_root, source);
+            try {
+                return select_source(model_path, model_root, spec_description, source);
+            } catch (const std::exception & error) {
+                throw std::runtime_error("failed to select " + std::string(use_gguf ? "GGUF" : "safetensors") +
+                                         " source from " + spec_description + ": " + error.what());
+            }
         }
     }
     throw std::runtime_error(std::string("no ") + (use_gguf ? "gguf" : "safetensors") + " model package source in " +
-                             spec_path.string());
+                             spec_description);
 }
 
 }  // namespace
@@ -364,7 +388,12 @@ ResourceBundle load_resource_bundle_from_package_spec(
     const std::filesystem::path & model_path,
     const std::filesystem::path & spec_path) {
     auto selected = require_selected_source(model_path, spec_path);
-    return load_source(selected.model_root, selected.source, selected.roots);
+    try {
+        return load_source(selected.model_root, selected.source, selected.roots);
+    } catch (const std::exception & error) {
+        throw std::runtime_error("failed to load model package resources using " + selected.spec_description +
+                                 " source '" + selected.source_format + "': " + error.what());
+    }
 }
 
 std::vector<ResourceFile> discover_resources_from_package_spec(
@@ -372,7 +401,12 @@ std::vector<ResourceFile> discover_resources_from_package_spec(
     const std::filesystem::path & spec_path,
     ModelPackageResourceKind kind) {
     auto selected = require_selected_source(model_path, spec_path);
-    return discover_safetensors_source_resources(selected.source, kind, selected.roots);
+    try {
+        return discover_safetensors_source_resources(selected.source, kind, selected.roots);
+    } catch (const std::exception & error) {
+        throw std::runtime_error("failed to discover model package resources using " + selected.spec_description +
+                                 " source '" + selected.source_format + "': " + error.what());
+    }
 }
 
 }  // namespace engine::assets
