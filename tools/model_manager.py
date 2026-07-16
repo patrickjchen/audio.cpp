@@ -21,6 +21,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import torch
+from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from safetensors.torch import load_file, save_file
 import yaml
@@ -1355,6 +1356,33 @@ def validate_required_files_list(required_files: Iterable[str], root: Path, labe
         raise RuntimeError(f"{label} is missing required files: {missing}")
 
 
+def download_hf_file(
+    source: SnapshotSource,
+    relative_path: str,
+    destination_root: Path,
+    expected_size: int | None,
+) -> None:
+    """Fetch one repo file into ``destination_root/relative_path`` via huggingface_hub.
+
+    Plain HTTP against the resolve URL cannot be used here: Xet-backed repos redirect
+    to a CDN that rejects ordinary GETs, so only the hub client (with ``hf_xet``) can
+    pull their weights. ``local_dir`` writes the file straight to its final location
+    instead of duplicating it in the shared blob cache.
+    """
+    destination = destination_root / relative_path
+    if expected_size is not None and destination.is_file() and destination.stat().st_size == expected_size:
+        print(f"skip {relative_path} (already complete)")
+        return
+    print(f"download {relative_path}")
+    hf_hub_download(
+        repo_id=source.repo_id,
+        filename=relative_path,
+        revision=source.revision,
+        local_dir=destination_root,
+        token=huggingface_token(),
+    )
+
+
 def install_snapshot_into_dir(
     source: SnapshotSource,
     destination_root: Path,
@@ -1366,8 +1394,7 @@ def install_snapshot_into_dir(
     for relative, expected_size in files:
         destination = destination_root / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
-        print(f"download {relative}")
-        download_file(hf_resolve_url(source, relative), destination, expected_size)
+        download_hf_file(source, relative, destination_root, expected_size)
     if validate:
         validate_required_files_list(required_files, destination_root, source.repo_id)
 

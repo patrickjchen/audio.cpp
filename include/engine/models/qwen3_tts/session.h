@@ -63,9 +63,11 @@ private:
     size_t speech_decoder_graph_arena_bytes_ = 32ull * 1024ull * 1024ull;
     size_t speaker_encoder_graph_arena_bytes_ = 32ull * 1024ull * 1024ull;
     // No-alloc GGML context capacities for reusable constant tensor descriptors.
-    size_t talker_constant_context_bytes_ = 4ull * 1024ull * 1024ull * 1024ull;
-    size_t code_predictor_constant_context_bytes_ = 1536ull * 1024ull * 1024ull;
-    size_t speech_decoder_constant_context_bytes_ = 1536ull * 1024ull * 1024ull;
+    // ggml_init() mallocs mem_size on the host even when no_alloc is set, so these
+    // only need to hold tensor descriptors, not tensor data.
+    size_t talker_constant_context_bytes_ = 256ull * 1024ull * 1024ull;
+    size_t code_predictor_constant_context_bytes_ = 128ull * 1024ull * 1024ull;
+    size_t speech_decoder_constant_context_bytes_ = 128ull * 1024ull * 1024ull;
     engine::assets::TensorStorageType talker_weight_storage_type_ = engine::assets::TensorStorageType::Native;
     engine::assets::TensorStorageType speech_encoder_weight_storage_type_ = engine::assets::TensorStorageType::Native;
     engine::assets::TensorStorageType speech_decoder_weight_storage_type_ = engine::assets::TensorStorageType::Native;
