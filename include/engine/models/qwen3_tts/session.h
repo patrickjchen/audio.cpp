@@ -63,6 +63,8 @@ private:
     size_t speech_decoder_graph_arena_bytes_ = 32ull * 1024ull * 1024ull;
     size_t speaker_encoder_graph_arena_bytes_ = 32ull * 1024ull * 1024ull;
     // No-alloc GGML context capacities for reusable constant tensor descriptors.
+    // Generous on purpose; ConstantTensorCache fits them to the host when it has
+    // to, so a small machine is not asked to reserve what it does not have.
     size_t talker_constant_context_bytes_ = 4ull * 1024ull * 1024ull * 1024ull;
     size_t code_predictor_constant_context_bytes_ = 1536ull * 1024ull * 1024ull;
     size_t speech_decoder_constant_context_bytes_ = 1536ull * 1024ull * 1024ull;
