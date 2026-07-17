@@ -83,10 +83,22 @@ option(ENGINE_ENABLE_OPENMP "Build host code with OpenMP support" ON)
 option(ENGINE_BUILD_EXAMPLES "Build example binaries" OFF)
 option(ENGINE_BUILD_TESTS "Build framework unit tests" OFF)
 option(ENGINE_BUILD_WARMBENCH "Build warmbench helper binaries" OFF)
+set(AUDIOCPP_GGML_SOURCE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/ggml"
+    CACHE PATH "ggml source tree to build with AudioCPP")
 
 if (ENGINE_ENABLE_CUDA)
     enable_language(CUDA)
-    find_package(CUDAToolkit REQUIRED)
+    # 12.0 is a floor, not a target: any 12.x or 13.x works (the Dockerfile pins
+    # 12.9.0, and docs/build/windows.md ships a CUDA 13 package). The minimum is
+    # enforced because an older toolkit configures happily and only fails at the
+    # first .cu file, which reads as a code bug rather than a toolchain one: nvcc
+    # < 11.6 cannot parse libstdc++ >= 11.3 headers ("parameter packs not expanded
+    # with '...'" in <functional>), and distros still ship such pairings (Ubuntu
+    # 22.04's nvidia-cuda-toolkit is 11.5). Fail here, with a pointer, instead.
+    # The upper bound is the host compiler the chosen toolkit accepts, not CUDA
+    # itself (e.g. CUDA 12.9 supports GCC <= 14), so it is left to the toolkit.
+    find_package(CUDAToolkit 12.0 REQUIRED)
     if (NOT MSVC)
         set(CMAKE_CUDA_FLAGS_DEBUG "${AUDIOCPP_DEBUG_OPT_FLAGS}" CACHE STRING "Optimized debug CUDA flags" FORCE)
     endif()
@@ -111,7 +123,11 @@ set(SPM_ENABLE_SHARED OFF CACHE BOOL "Build sentencepiece shared libs" FORCE)
 set(SPM_BUILD_TEST OFF CACHE BOOL "Do not build sentencepiece tests" FORCE)
 set(SPM_ENABLE_TCMALLOC OFF CACHE BOOL "Do not probe for tcmalloc" FORCE)
 
-add_subdirectory(external/ggml)
+if (NOT EXISTS "${AUDIOCPP_GGML_SOURCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "AUDIOCPP_GGML_SOURCE_DIR does not point to a ggml source tree: ${AUDIOCPP_GGML_SOURCE_DIR}")
+endif()
+message(STATUS "Using ggml source: ${AUDIOCPP_GGML_SOURCE_DIR}")
+add_subdirectory("${AUDIOCPP_GGML_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/ggml")
 add_subdirectory(external/sentencepiece EXCLUDE_FROM_ALL)
 
 add_compile_options(
@@ -629,40 +645,42 @@ if (ENGINE_ENABLE_OPENMP)
     target_link_libraries(vibevoice_finetune_overlay_check PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
-add_executable(moss_tts_local_smoke
-    tests/moss_tts_local/moss_tts_local_smoke.cpp
-)
+if (ENGINE_BUILD_TESTS)
+    add_executable(moss_tts_local_smoke
+        tests/moss_tts_local/moss_tts_local_smoke.cpp
+    )
 
-target_link_libraries(moss_tts_local_smoke PRIVATE engine_runtime ggml)
-if (ENGINE_ENABLE_OPENMP)
-    target_link_libraries(moss_tts_local_smoke PRIVATE OpenMP::OpenMP_CXX)
-endif()
+    target_link_libraries(moss_tts_local_smoke PRIVATE engine_runtime ggml)
+    if (ENGINE_ENABLE_OPENMP)
+        target_link_libraries(moss_tts_local_smoke PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 
-add_executable(codec_dequant_parity
-    tests/moss_tts_local/codec_dequant_parity.cpp
-)
+    add_executable(codec_dequant_parity
+        tests/moss_tts_local/codec_dequant_parity.cpp
+    )
 
-target_link_libraries(codec_dequant_parity PRIVATE engine_runtime ggml)
-if (ENGINE_ENABLE_OPENMP)
-    target_link_libraries(codec_dequant_parity PRIVATE OpenMP::OpenMP_CXX)
-endif()
+    target_link_libraries(codec_dequant_parity PRIVATE engine_runtime ggml)
+    if (ENGINE_ENABLE_OPENMP)
+        target_link_libraries(codec_dequant_parity PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 
-add_executable(codec_decode_parity
-    tests/moss_tts_local/codec_decode_parity.cpp
-)
+    add_executable(codec_decode_parity
+        tests/moss_tts_local/codec_decode_parity.cpp
+    )
 
-target_link_libraries(codec_decode_parity PRIVATE engine_runtime ggml)
-if (ENGINE_ENABLE_OPENMP)
-    target_link_libraries(codec_decode_parity PRIVATE OpenMP::OpenMP_CXX)
-endif()
+    target_link_libraries(codec_decode_parity PRIVATE engine_runtime ggml)
+    if (ENGINE_ENABLE_OPENMP)
+        target_link_libraries(codec_decode_parity PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 
-add_executable(codec_encode_parity
-    tests/moss_tts_local/codec_encode_parity.cpp
-)
+    add_executable(codec_encode_parity
+        tests/moss_tts_local/codec_encode_parity.cpp
+    )
 
-target_link_libraries(codec_encode_parity PRIVATE engine_runtime ggml)
-if (ENGINE_ENABLE_OPENMP)
-    target_link_libraries(codec_encode_parity PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(codec_encode_parity PRIVATE engine_runtime ggml)
+    if (ENGINE_ENABLE_OPENMP)
+        target_link_libraries(codec_encode_parity PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 endif()
 
 if (ENGINE_BUILD_WARMBENCH)
