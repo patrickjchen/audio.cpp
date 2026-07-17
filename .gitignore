@@ -28,3 +28,16 @@ __pycache__/
 /*.wav
 /flutter/
 /.cache/
+
+# --- portable bundle: distributed manually, never committed ---
+/audiocpp-portable/
+
+# --- WebUI runtime artifacts: keep the source + empty dirs, drop generated files ---
+/webui/output/*
+!/webui/output/.gitkeep
+/webui/logs/*
+!/webui/logs/.gitkeep
+/webui/third_party/
+/webui/llm_api_key.txt
+# personal voice recording — stays local, repo is public
+/webui/voice/my-record.wav
