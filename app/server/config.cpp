@@ -62,11 +62,15 @@ ServerConfig load_server_config(const std::filesystem::path & path) {
     config.device = engine::io::json::optional_i32(root, "device", config.device);
     config.threads = engine::io::json::optional_i32(root, "threads", config.threads);
     config.lazy_load = engine::io::json::optional_bool(root, "lazy_load", config.lazy_load);
+    config.busy_timeout_ms = engine::io::json::optional_i32(root, "busy_timeout_ms", config.busy_timeout_ms);
     if (const auto * value = root.find("model_spec_override")) {
         config.model_spec_override = resolve_path(base, value->as_string());
     }
     if (config.port <= 0 || config.port > 65535) {
         throw std::runtime_error("server port must be in 1..65535");
+    }
+    if (config.busy_timeout_ms < 0) {
+        throw std::runtime_error("server busy_timeout_ms must be >= 0 (0 disables the guard)");
     }
     if (config.threads <= 0) {
         throw std::runtime_error("server threads must be positive");

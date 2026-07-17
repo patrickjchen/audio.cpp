@@ -30,6 +30,19 @@ using engine::io::json::Value;
 
 using Clock = std::chrono::steady_clock;
 
+// Thrown when a model is occupied and the busy_timeout has elapsed. Mapped to
+// HTTP 503 so a client can retry or fail over rather than hang.
+class ServerBusyError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
+
+std::int64_t steady_now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               Clock::now().time_since_epoch())
+        .count();
+}
+
 std::string json_quote(std::string_view value) {
     return engine::io::json::stringify_string(value);
 }
@@ -534,6 +547,7 @@ ServerState::ServerState(ServerConfig config, std::filesystem::path request_base
 }
 
 HttpResponse ServerState::handle(const HttpRequest & request) {
+  try {
     if (request.method == "GET" && request.path == "/health") {
         return json_response(
             "{\"status\":\"ok\",\"backend\":\"" +
@@ -561,6 +575,12 @@ HttpResponse ServerState::handle(const HttpRequest & request) {
         return handle_generic_stream(request.body);
     }
     return error_response(404, "unknown endpoint: " + request.path, "not_found");
+  } catch (const ServerBusyError & ex) {
+    // Non-streaming requests surface the busy state as 503 before any response is
+    // sent. (Streaming requests acquire the lock inside the stream body, after
+    // headers are sent, so there it becomes a stream error event instead.)
+    return error_response(503, ex.what(), "server_busy");
+  }
 }
 
 void ServerState::load_models() {
@@ -753,10 +773,39 @@ struct ServerState::TimedTaskResult {
     std::optional<double> ttft_ms;
 };
 
+ServerState::ModelRunLock ServerState::acquire_model_run(LoadedModel & model) {
+    std::unique_lock<std::timed_mutex> lock(model.mutex, std::defer_lock);
+    const int timeout_ms = config_.busy_timeout_ms;
+    if (timeout_ms <= 0) {
+        lock.lock();  // guard disabled: original unbounded wait
+    } else {
+        // If the current holder has already run past the timeout, treat it as wedged
+        // and fail fast rather than queue behind it -- this is what stops requests
+        // piling up on a stuck GPU.
+        const auto since = model.busy_since_ms.load(std::memory_order_acquire);
+        if (since != 0) {
+            const auto held_ms = steady_now_ms() - since;
+            if (held_ms > timeout_ms) {
+                throw ServerBusyError(
+                    "model '" + model.config.id + "' is busy: current inference has run " +
+                    std::to_string(held_ms) + " ms (busy_timeout_ms=" + std::to_string(timeout_ms) +
+                    "); the previous request has likely wedged and cannot be cancelled");
+            }
+        }
+        if (!lock.try_lock_for(std::chrono::milliseconds(timeout_ms))) {
+            throw ServerBusyError(
+                "model '" + model.config.id + "' is busy: timed out after " +
+                std::to_string(timeout_ms) + " ms waiting for the inference lock");
+        }
+    }
+    model.busy_since_ms.store(steady_now_ms(), std::memory_order_release);
+    return ModelRunLock(model, std::move(lock));
+}
+
 ServerState::TimedTaskResult ServerState::run_model(
     LoadedModel & model,
     const engine::runtime::TaskRequest & request) {
-    std::lock_guard<std::mutex> lock(model.mutex);
+    ModelRunLock lock = acquire_model_run(model);
     ensure_model_loaded_locked(model);
     if (model.offline == nullptr) {
         throw std::runtime_error("configured model does not provide offline execution: " + model.config.id);
@@ -771,7 +820,7 @@ ServerState::TimedTaskResult ServerState::run_streaming_model(
     LoadedModel & model,
     const engine::runtime::TaskRequest & request,
     const std::function<void(const engine::runtime::StreamEvent &)> & event_sink) {
-    std::lock_guard<std::mutex> lock(model.mutex);
+    ModelRunLock lock = acquire_model_run(model);
     ensure_model_loaded_locked(model);
     if (model.streaming == nullptr) {
         throw std::runtime_error("configured model does not provide streaming execution: " + model.config.id);

@@ -7,6 +7,8 @@
 #include "engine/framework/runtime/model.h"
 #include "engine/framework/runtime/session.h"
 
+#include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -38,8 +40,41 @@ private:
         engine::runtime::IStreamingVoiceTaskSession * streaming = nullptr;
         std::unordered_map<std::string, RuntimeVoicePreset> voice_presets;
         std::optional<RuntimeVoicePreset> default_voice_preset;
-        std::mutex mutex;
+        // timed_mutex so a request can bound how long it waits for the model.
+        // busy_since_ms is the steady-clock time (ms) the current holder acquired the
+        // lock, or 0 when idle; it lets a new request detect a run that has already
+        // overrun and fail fast instead of queuing behind a wedged inference.
+        std::timed_mutex mutex;
+        std::atomic<std::int64_t> busy_since_ms{0};
     };
+
+    // Holds model.mutex for the duration of a run and clears busy_since_ms when it
+    // releases (including on exception), so the fail-fast check never sees a stale
+    // timestamp. Move-only.
+    class ModelRunLock {
+    public:
+        ModelRunLock() = default;
+        ModelRunLock(LoadedModel & model, std::unique_lock<std::timed_mutex> lock)
+            : model_(&model), lock_(std::move(lock)) {}
+        ModelRunLock(ModelRunLock &&) = default;
+        ModelRunLock & operator=(ModelRunLock &&) = default;
+        ModelRunLock(const ModelRunLock &) = delete;
+        ModelRunLock & operator=(const ModelRunLock &) = delete;
+        ~ModelRunLock() {
+            if (model_ != nullptr && lock_.owns_lock()) {
+                model_->busy_since_ms.store(0, std::memory_order_release);
+            }
+        }
+
+    private:
+        LoadedModel * model_ = nullptr;
+        std::unique_lock<std::timed_mutex> lock_;
+    };
+
+    // Acquire model.mutex for a run. Throws ServerBusyError (-> HTTP 503) when the
+    // busy_timeout has elapsed, either because the current holder has already
+    // overrun (fail fast, no wait) or because the wait itself timed out.
+    ModelRunLock acquire_model_run(LoadedModel & model);
 
     void load_models();
     LoadedModel::RuntimeVoicePreset load_runtime_voice_preset(const ServerModelConfig::VoicePreset & preset) const;

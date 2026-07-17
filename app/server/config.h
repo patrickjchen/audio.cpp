@@ -40,6 +40,14 @@ struct ServerConfig {
     int device = 0;
     int threads = 1;
     bool lazy_load = false;
+    // A single model runs one request at a time (serialized on model.mutex). If a
+    // running inference wedges the GPU -- a CUDA call that never returns cannot be
+    // cancelled from userspace -- later requests would otherwise block forever, so
+    // once the current run has held the lock this long a new request fails fast with
+    // 503 instead of parking a worker thread. Must exceed the slowest legitimate
+    // single inference (music generation can take minutes). 0 disables the guard and
+    // restores unbounded waiting.
+    int busy_timeout_ms = 300000;
     std::optional<std::filesystem::path> model_spec_override;
     std::vector<ServerModelConfig> models;
 };

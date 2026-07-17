@@ -74,6 +74,8 @@ Set top-level `"lazy_load": true` to register all configured model ids at startu
 > [!WARNING]
 > Lazy loading does not unload models after a request. Once a model is first used, the server keeps that model and session in memory for reuse until the server exits.
 
+Set top-level `"busy_timeout_ms"` to bound how long a request waits for a model that is already running. Each model serializes its requests on an internal lock, so a second request normally queues behind the first. A GPU call that wedges cannot be cancelled from userspace, so without a bound every subsequent request would park a worker thread forever. When the current inference has held the lock past this timeout, a new request fails fast with HTTP 503 (`server_busy`) instead of queuing; streaming requests that have already sent headers surface the same condition as a `{"type":"error"}` stream event. The value must exceed the slowest legitimate single inference (music generation can take minutes). Defaults to `300000` (5 minutes); set `0` to disable the guard and restore unbounded waiting.
+
 For streaming endpoints, configure the model with `"mode": "streaming"` and use that model id in the request. A complete example is available at `app/server/streaming_example.json`:
 
 ```json
