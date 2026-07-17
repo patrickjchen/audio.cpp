@@ -86,7 +86,16 @@ option(ENGINE_BUILD_WARMBENCH "Build warmbench helper binaries" OFF)
 
 if (ENGINE_ENABLE_CUDA)
     enable_language(CUDA)
-    find_package(CUDAToolkit REQUIRED)
+    # 12.0 is a floor, not a target: any 12.x or 13.x works (the Dockerfile pins
+    # 12.9.0, and docs/build/windows.md ships a CUDA 13 package). The minimum is
+    # enforced because an older toolkit configures happily and only fails at the
+    # first .cu file, which reads as a code bug rather than a toolchain one: nvcc
+    # < 11.6 cannot parse libstdc++ >= 11.3 headers ("parameter packs not expanded
+    # with '...'" in <functional>), and distros still ship such pairings (Ubuntu
+    # 22.04's nvidia-cuda-toolkit is 11.5). Fail here, with a pointer, instead.
+    # The upper bound is the host compiler the chosen toolkit accepts, not CUDA
+    # itself (e.g. CUDA 12.9 supports GCC <= 14), so it is left to the toolkit.
+    find_package(CUDAToolkit 12.0 REQUIRED)
     if (NOT MSVC)
         set(CMAKE_CUDA_FLAGS_DEBUG "${AUDIOCPP_DEBUG_OPT_FLAGS}" CACHE STRING "Optimized debug CUDA flags" FORCE)
     endif()
