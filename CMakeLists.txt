@@ -636,40 +636,42 @@ if (ENGINE_ENABLE_OPENMP)
     target_link_libraries(vibevoice_finetune_overlay_check PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
-add_executable(moss_tts_local_smoke
-    tests/moss_tts_local/moss_tts_local_smoke.cpp
-)
+if (ENGINE_BUILD_TESTS)
+    add_executable(moss_tts_local_smoke
+        tests/moss_tts_local/moss_tts_local_smoke.cpp
+    )
 
-target_link_libraries(moss_tts_local_smoke PRIVATE engine_runtime ggml)
-if (ENGINE_ENABLE_OPENMP)
-    target_link_libraries(moss_tts_local_smoke PRIVATE OpenMP::OpenMP_CXX)
-endif()
+    target_link_libraries(moss_tts_local_smoke PRIVATE engine_runtime ggml)
+    if (ENGINE_ENABLE_OPENMP)
+        target_link_libraries(moss_tts_local_smoke PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 
-add_executable(codec_dequant_parity
-    tests/moss_tts_local/codec_dequant_parity.cpp
-)
+    add_executable(codec_dequant_parity
+        tests/moss_tts_local/codec_dequant_parity.cpp
+    )
 
-target_link_libraries(codec_dequant_parity PRIVATE engine_runtime ggml)
-if (ENGINE_ENABLE_OPENMP)
-    target_link_libraries(codec_dequant_parity PRIVATE OpenMP::OpenMP_CXX)
-endif()
+    target_link_libraries(codec_dequant_parity PRIVATE engine_runtime ggml)
+    if (ENGINE_ENABLE_OPENMP)
+        target_link_libraries(codec_dequant_parity PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 
-add_executable(codec_decode_parity
-    tests/moss_tts_local/codec_decode_parity.cpp
-)
+    add_executable(codec_decode_parity
+        tests/moss_tts_local/codec_decode_parity.cpp
+    )
 
-target_link_libraries(codec_decode_parity PRIVATE engine_runtime ggml)
-if (ENGINE_ENABLE_OPENMP)
-    target_link_libraries(codec_decode_parity PRIVATE OpenMP::OpenMP_CXX)
-endif()
+    target_link_libraries(codec_decode_parity PRIVATE engine_runtime ggml)
+    if (ENGINE_ENABLE_OPENMP)
+        target_link_libraries(codec_decode_parity PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 
-add_executable(codec_encode_parity
-    tests/moss_tts_local/codec_encode_parity.cpp
-)
+    add_executable(codec_encode_parity
+        tests/moss_tts_local/codec_encode_parity.cpp
+    )
 
-target_link_libraries(codec_encode_parity PRIVATE engine_runtime ggml)
-if (ENGINE_ENABLE_OPENMP)
-    target_link_libraries(codec_encode_parity PRIVATE OpenMP::OpenMP_CXX)
+    target_link_libraries(codec_encode_parity PRIVATE engine_runtime ggml)
+    if (ENGINE_ENABLE_OPENMP)
+        target_link_libraries(codec_encode_parity PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 endif()
 
 if (ENGINE_BUILD_WARMBENCH)
