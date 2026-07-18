@@ -35,6 +35,18 @@ public:
         return "miocodec";
     }
 
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::VoiceConversion, {runtime::RunMode::Offline}},
+            {runtime::VoiceTaskKind::SpeechToSpeech, {runtime::RunMode::Offline}},
+        };
+        out.supports_speaker_reference = true;
+        out.supports_style_condition = true;
+        out.supports_timestamps = true;
+        return out;
+    }
+
     bool can_load(const runtime::ModelLoadRequest & request) const override {
         if (request.family_hint.has_value() && *request.family_hint != family()) {
             return false;

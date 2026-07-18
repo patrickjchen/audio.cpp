@@ -74,6 +74,14 @@ public:
         return "stable_audio";
     }
 
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::AudioGeneration, {runtime::RunMode::Offline}},
+        };
+        return out;
+    }
+
     bool can_load(const runtime::ModelLoadRequest & request) const override {
         try {
             const auto package_spec = engine::assets::default_model_package_spec_path(family());

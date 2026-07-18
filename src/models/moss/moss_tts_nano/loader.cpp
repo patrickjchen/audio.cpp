@@ -64,6 +64,16 @@ public:
         return "moss_tts_nano";
     }
 
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::Tts, {runtime::RunMode::Offline}},
+            {runtime::VoiceTaskKind::VoiceCloning, {runtime::RunMode::Offline}},
+        };
+        out.supports_speaker_reference = true;
+        return out;
+    }
+
     bool can_load(const runtime::ModelLoadRequest & request) const override {
         try {
             (void) engine::assets::load_resource_bundle_from_package_spec(

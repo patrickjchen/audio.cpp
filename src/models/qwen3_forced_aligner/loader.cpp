@@ -43,6 +43,15 @@ public:
         return "qwen3_forced_aligner";
     }
 
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::Alignment, {runtime::RunMode::Offline}},
+        };
+        out.supports_timestamps = true;
+        return out;
+    }
+
     bool can_load(const runtime::ModelLoadRequest & request) const override {
         try {
             (void) load_qwen3_forced_aligner_assets(request.model_path);

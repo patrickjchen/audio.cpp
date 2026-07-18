@@ -67,6 +67,17 @@ public:
         return "qwen3_tts";
     }
 
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::Tts, {runtime::RunMode::Offline}},
+            {runtime::VoiceTaskKind::VoiceDesign, {runtime::RunMode::Offline}},
+        };
+        out.supports_speaker_reference = true;
+        out.supports_style_condition = true;
+        return out;
+    }
+
     bool can_load(const runtime::ModelLoadRequest & request) const override {
         try {
             const auto package_spec = engine::assets::default_model_package_spec_path(family());

@@ -50,6 +50,15 @@ class SupertonicLoader final : public runtime::IVoiceModelLoader {
 public:
     std::string family() const override { return "supertonic"; }
 
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::Tts, {runtime::RunMode::Offline, runtime::RunMode::Streaming}},
+        };
+        out.supports_style_condition = true;
+        return out;
+    }
+
     bool can_load(const runtime::ModelLoadRequest & request) const override {
         try {
             (void) engine::assets::load_resource_bundle_from_package_spec(

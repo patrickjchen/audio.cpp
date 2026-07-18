@@ -54,6 +54,15 @@ public:
         return "higgs_audio_stt";
     }
 
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::Asr, {runtime::RunMode::Offline, runtime::RunMode::Streaming}},
+        };
+        out.supports_timestamps = true;
+        return out;
+    }
+
     bool can_load(const runtime::ModelLoadRequest & request) const override {
         try {
             const auto package_spec = engine::assets::default_model_package_spec_path(family());

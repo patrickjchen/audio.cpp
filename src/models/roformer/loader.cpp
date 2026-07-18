@@ -62,6 +62,14 @@ public:
         return std::string(kMelBandRoformerFamily);
     }
 
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::SourceSeparation, {runtime::RunMode::Offline}},
+        };
+        return out;
+    }
+
     bool can_load(const runtime::ModelLoadRequest & request) const override {
         if (request.family_hint.has_value() && *request.family_hint != family()) {
             return false;

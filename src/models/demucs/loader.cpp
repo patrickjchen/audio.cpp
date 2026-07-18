@@ -40,6 +40,14 @@ public:
         return "htdemucs";
     }
 
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::SourceSeparation, {runtime::RunMode::Offline}},
+        };
+        return out;
+    }
+
     bool can_load(const runtime::ModelLoadRequest & request) const override {
         try {
             const auto package_spec = assets::default_model_package_spec_path(family());
