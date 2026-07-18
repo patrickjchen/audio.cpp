@@ -20,10 +20,31 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-import torch
-from safetensors import safe_open
-from safetensors.torch import load_file, save_file
-import yaml
+# Heavy install/convert deps are imported lazily so ``list --json`` / ``info``
+# work without Torch in the environment.
+torch: Any = None
+safe_open: Any = None
+load_file: Any = None
+save_file: Any = None
+yaml: Any = None
+
+
+def _ensure_install_deps() -> None:
+    """Import Torch / safetensors / yaml on first install/convert use."""
+    global torch, safe_open, load_file, save_file, yaml
+    if torch is not None:
+        return
+    import torch as _torch
+    from safetensors import safe_open as _safe_open
+    from safetensors.torch import load_file as _load_file
+    from safetensors.torch import save_file as _save_file
+    import yaml as _yaml
+
+    torch = _torch
+    safe_open = _safe_open
+    load_file = _load_file
+    save_file = _save_file
+    yaml = _yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -121,10 +142,26 @@ class ModelPackage:
     required_files: tuple[str, ...]
     source: SnapshotSource | CompositeSnapshotSource | ConverterSource | UnsupportedSource
     description: str = ""
+    # Optional discovery overrides for ``list --json`` / tooling consumers.
+    family: str | None = None
+    standalone: bool | None = None
+    parent_package_id: str | None = None
+    tasks: tuple[str, ...] = ()
+    gated: bool | None = None
 
 
 UTILITY_CONVERTER_KINDS = {"pytorch_to_safetensors"}
 POSTPROCESS_SNAPSHOT_PACKAGE_IDS = {"voxcpm2"}
+_GATED_REPO_MARKERS = (
+    "kyutai/pocket-tts",
+    "stabilityai/",
+)
+_GATED_TEXT_MARKERS = (
+    "gated",
+    "requires access",
+    "accept the license",
+    "accept the conditions",
+)
 
 
 def package_install_kind(package: ModelPackage) -> str:
@@ -1200,6 +1237,129 @@ def resolve_path(path: str) -> Path:
     return REPO_ROOT / candidate
 
 
+def _infer_family_from_package_id(package_id: str) -> str:
+    key = str(package_id or "").strip().lower()
+    aliases = (
+        ("qwen3_forced_aligner", "qwen3_forced_aligner"),
+        ("qwen3_tts", "qwen3_tts"),
+        ("qwen3_asr", "qwen3_asr"),
+        ("vibevoice_asr", "vibevoice_asr"),
+        ("vibevoice", "vibevoice"),
+        ("moss_tts_nano", "moss_tts_nano"),
+        ("moss_tts_local", "moss_tts_local"),
+        ("higgs_audio", "higgs_audio_stt"),
+        ("irodori_tts", "irodori_tts"),
+        ("index_tts", "index_tts2"),
+        ("sortformer", "sortformer_diar"),
+        ("marblenet", "marblenet_vad"),
+        ("stable_audio", "stable_audio"),
+        ("mel_band_roformer", "mel_band_roformer"),
+        ("htdemucs", "htdemucs"),
+        ("miocodec", "miocodec"),
+        ("miotts", "miotts"),
+        ("omnivoice", "omnivoice"),
+        ("pocket_tts", "pocket_tts"),
+        ("supertonic", "supertonic"),
+        ("voxcpm2", "voxcpm2"),
+        ("chatterbox", "chatterbox"),
+        ("citrinet", "citrinet_asr"),
+        ("hviske", "hviske_asr"),
+        ("nemotron", "nemotron_asr"),
+        ("seed_vc", "seed_vc"),
+        ("vevo2", "vevo2"),
+        ("ace_step", "ace_step"),
+        ("heartmula", "heartmula"),
+        ("silero", "silero_vad"),
+        ("kokoro", "kokoro_tts"),
+        ("parakeet", "parakeet_tdt"),
+    )
+    for prefix, family in aliases:
+        if key == prefix or key.startswith(prefix + "_"):
+            return family
+    return key
+
+
+def _infer_tasks_from_family(family: str) -> list[str]:
+    key = str(family or "").strip().lower()
+    if "forced_aligner" in key or key.endswith("_aligner") or key.endswith("_align"):
+        return ["align"]
+    if key.endswith("_asr") or key.endswith("_stt") or key in {"parakeet_tdt", "whisper"}:
+        return ["asr"]
+    if "vad" in key:
+        return ["vad"]
+    if "diar" in key or "sortformer" in key:
+        return ["diar"]
+    if any(token in key for token in ("demucs", "roformer", "separator")):
+        return ["sep"]
+    if key in {"stable_audio", "ace_step", "heartmula"} or key.endswith("_gen"):
+        return ["gen"]
+    if key in {"seed_vc", "vevo2"} or key.endswith("_vc"):
+        return ["vc"]
+    if key == "miocodec" or key.startswith("miocodec") or key.endswith("_codec"):
+        return ["codec"]
+    if any(
+        token in key
+        for token in (
+            "tts",
+            "kokoro",
+            "chatterbox",
+            "voxcpm",
+            "omnivoice",
+            "supertonic",
+            "miotts",
+            "pocket",
+            "irodori",
+            "moss_tts",
+            "index_tts",
+            "vibevoice",
+        )
+    ):
+        if key.endswith("_asr") or key.endswith("_stt"):
+            return ["asr"]
+        return ["tts"]
+    return []
+
+
+def _collect_package_repo_ids(package: ModelPackage) -> list[str]:
+    source = package.source
+    repos: list[str] = []
+    if isinstance(source, SnapshotSource):
+        repos.append(source.repo_id)
+    elif isinstance(source, CompositeSnapshotSource):
+        for placement in source.placements:
+            repos.append(placement.source.repo_id)
+    return [repo for repo in repos if isinstance(repo, str) and repo]
+
+
+def _package_is_gated(package: ModelPackage) -> bool:
+    if isinstance(package.gated, bool):
+        return package.gated
+    repos = [repo.lower() for repo in _collect_package_repo_ids(package)]
+    if any(any(marker in repo for marker in _GATED_REPO_MARKERS) for repo in repos):
+        return True
+    text = str(package.description or "").lower()
+    return any(marker in text for marker in _GATED_TEXT_MARKERS)
+
+
+def _package_standalone_fields(package: ModelPackage) -> tuple[bool, str | None]:
+    if isinstance(package.standalone, bool):
+        return package.standalone, package.parent_package_id
+    desc = str(package.description or "").strip().lower()
+    kind = package_install_kind(package)
+    if desc.startswith("subcomponent only.") or desc.startswith("utility only.") or kind == "utility":
+        parent = package.parent_package_id
+        if not parent:
+            # "Use moss_tts_nano_100m for the full framework..."
+            for token in desc.replace(".", " ").replace(",", " ").split():
+                if token in PACKAGE_BY_ID and token != package.id:
+                    parent = token
+                    break
+        return False, parent
+    if "tokenizer" in package.id.lower() or "audiovae" in package.id.lower():
+        return False, package.parent_package_id
+    return True, None
+
+
 def package_payload(package: ModelPackage) -> dict[str, object]:
     source = package.source
     if isinstance(source, SnapshotSource):
@@ -1227,6 +1387,7 @@ def package_payload(package: ModelPackage) -> dict[str, object]:
                 }
                 for placement in source.placements
             ],
+            "repo_ids": _collect_package_repo_ids(package),
         }
         installable = True
     elif isinstance(source, ConverterSource):
@@ -1249,6 +1410,9 @@ def package_payload(package: ModelPackage) -> dict[str, object]:
             "reason": source.reason,
         }
         installable = False
+    family = package.family or _infer_family_from_package_id(package.id)
+    tasks = list(package.tasks) if package.tasks else _infer_tasks_from_family(family)
+    standalone, parent_package_id = _package_standalone_fields(package)
     return {
         "id": package.id,
         "display_name": package.display_name,
@@ -1259,6 +1423,12 @@ def package_payload(package: ModelPackage) -> dict[str, object]:
         "usage_examples": package_usage_examples(package),
         "required_files": list(package.required_files),
         "source": source_payload,
+        "family": family,
+        "tasks": tasks,
+        "modes": ["offline"] if tasks else [],
+        "standalone": standalone,
+        "parent_package_id": parent_package_id,
+        "gated": _package_is_gated(package),
     }
 
 
@@ -2251,6 +2421,7 @@ def command_info(args: argparse.Namespace) -> int:
 
 
 def command_install(args: argparse.Namespace) -> int:
+    _ensure_install_deps()
     package = PACKAGE_BY_ID.get(args.package_id)
     if package is None:
         raise RuntimeError(f"unknown package id: {args.package_id}")

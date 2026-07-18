@@ -120,6 +120,21 @@ bool ModelRegistry::supports_family(const std::string & family) const noexcept {
     return false;
 }
 
+std::vector<LoaderAdvertisement> ModelRegistry::advertise_loaders() const {
+    std::vector<LoaderAdvertisement> out;
+    out.reserve(loaders_.size());
+    for (const auto & loader : loaders_) {
+        if (loader == nullptr) {
+            continue;
+        }
+        out.push_back(loader->advertise());
+    }
+    std::sort(out.begin(), out.end(), [](const LoaderAdvertisement & a, const LoaderAdvertisement & b) {
+        return a.family < b.family;
+    });
+    return out;
+}
+
 ModelInspection ModelRegistry::inspect(const ModelLoadRequest & request) const {
     engine::assets::ScopedModelPackageSpecOverride spec_override(request.model_spec_override, request.model_path);
     validate_request(request);
