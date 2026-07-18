@@ -147,6 +147,7 @@ add_library(engine_runtime STATIC
     src/framework/core/backend.cpp
     src/framework/core/deferred_tensor_writer.cpp
     src/framework/core/execution_context.cpp
+    src/framework/core/host_memory.cpp
     src/framework/runtime/registry.cpp
     src/framework/runtime/model.cpp
     src/framework/runtime/session.cpp
