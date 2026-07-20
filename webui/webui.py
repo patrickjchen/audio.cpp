@@ -57,7 +57,13 @@ try:
         set_language,
         text as ui_text,
     )
-except ImportError:  # imported as the namespace package ``webui.webui`` in tests
+except ImportError as _exc:
+    # Fall back to the package-qualified name only when ui_i18n itself is not on
+    # the path (imported as ``webui.webui`` in tests). A missing *transitive*
+    # dependency of ui_i18n — e.g. opencc — must surface as-is instead of being
+    # masked by a misleading "no module named webui.ui_i18n".
+    if _exc.name not in ("ui_i18n", "webui"):
+        raise
     from webui.ui_i18n import (
         LANGUAGE_CHOICES,
         get_language,
