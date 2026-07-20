@@ -86,7 +86,7 @@ In your `flake.nix`, add it to your `inputs`, making sure to use `follows` to av
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     
-    audiocpp.url = "github:fedeizzo/audio.cpp";
+    audiocpp.url = "github:0xShug0/audio.cpp";
     audiocpp.inputs.nixpkgs.follows = "nixpkgs";
   };
 
