@@ -206,9 +206,9 @@ REQUIRED_FILES_PATH = os.path.join(CONFIG_DIR, "required_files.json")
 EXE_SUFFIX = ".exe" if os.name == "nt" else ""
 SERVER_EXE_NAME = "audiocpp_server" + EXE_SUFFIX
 GGUF_EXE_NAME = "audiocpp_gguf" + EXE_SUFFIX
-# The standalone server launcher, named only in messages telling the user which
-# script may be holding the port.
-SERVER_LAUNCHER = "run_server.bat" if os.name == "nt" else "run_server.sh"
+# The standalone server executable, named only in messages telling the user what
+# may be holding the port.
+SERVER_LAUNCHER = SERVER_EXE_NAME
 
 
 def _cmake_cache_backend(bin_dir):
@@ -412,8 +412,9 @@ MODELS_ROOT = os.path.join(BUNDLE_ROOT, "models")
 
 def _find_model_manager():
     for c in (os.environ.get("AUDIOCPP_MODEL_MANAGER"),
-              os.path.join(BUNDLE_ROOT, "tools", "model_manager_webui.py"),
-              os.path.join(PROJECT_ROOT, "tools", "model_manager_webui.py"),
+              os.path.join(HERE, "model_manager_webui.py"),
+              os.path.join(BUNDLE_ROOT, "webui", "model_manager_webui.py"),
+              os.path.join(PROJECT_ROOT, "webui", "model_manager_webui.py"),
               os.path.join(BUNDLE_ROOT, "tools", "model_manager.py"),
               os.path.join(PROJECT_ROOT, "tools", "model_manager.py")):
         if c and os.path.isfile(c):

@@ -9,8 +9,8 @@
 # AUDIOCPP_LANG (en|zh|zh-Hant) only sets the default before anything has been picked.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WEBUI_DIR="$ROOT/webui"
+WEBUI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$WEBUI_DIR/.." && pwd)"
 
 # Locate a Python that has the deps (gradio/requests/torch/safetensors/opencc/...).
 PY=""
@@ -18,6 +18,8 @@ for cand in \
     "${AUDIOCPP_PYTHON:-}" \
     "$ROOT/venv/bin/python" \
     "$ROOT/.venv/bin/python" \
+    "$WEBUI_DIR/venv/bin/python" \
+    "$WEBUI_DIR/.venv/bin/python" \
     "$(command -v python3 || true)" \
     "$(command -v python || true)"; do
     if [ -n "$cand" ] && [ -x "$cand" ]; then PY="$cand"; break; fi
@@ -25,7 +27,7 @@ done
 
 if [ -z "$PY" ]; then
     echo "[run_webui] no Python found. Create a venv and install deps:" >&2
-    echo "  python3 -m venv venv && ./venv/bin/pip install -r requirements.txt" >&2
+    echo "  python3 -m venv venv && ./venv/bin/pip install -r webui/requirements.txt" >&2
     exit 1
 fi
 

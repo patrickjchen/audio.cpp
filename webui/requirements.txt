@@ -7,7 +7,7 @@
 # The portable bundle ships this same env pre-installed as audiocpp-portable\venv.
 # Windows-only wheels (pywin32 and the pythonnet/pywebview desktop stack, used by
 # SpeakType) carry a sys_platform marker so this file also installs cleanly on Linux.
-# Regenerate:  venv\Scripts\python.exe -m pip freeze > requirements.txt
+# Regenerate:  venv\Scripts\python.exe -m pip freeze > webui\requirements.txt
 #annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.14.1

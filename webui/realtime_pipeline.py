@@ -15,12 +15,10 @@ Topology (URLs/models are per-session, pushed from the browser Settings panel):
                                    --> [TTS server /v1/audio/speech, per sentence] --> WAV
                                    --> resample to 16k PCM16 --> browser playback
 
-Two independent audio.cpp servers are expected, e.g.:
+Two independent audio.cpp servers can be used, e.g. one TTS server on port 8080
+and one ASR server on port 8081.
 
-    run_server.bat qwen3-tts 8080     (TTS)
-    run_server.bat qwen3-asr 8081     (ASR)
-
-Both may also be the *same* multi-model server; the pipeline only needs a URL +
+Both may also be the *same* multi-model server; the pipeline only needs a URL and
 model id for each stage, so either topology works.
 """
 

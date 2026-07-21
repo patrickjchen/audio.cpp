@@ -1,19 +1,19 @@
 @echo off
-REM _env.bat -- shared environment detection for the audio.cpp .bat launchers.
-REM Called (not run) by run_webui.bat / run_server.bat / run_cli_tts.bat. It sets
+REM _env.bat -- shared environment detection for the audio.cpp WebUI launchers.
+REM Called (not run) by run_webui.bat. It sets
 REM common variables and deliberately does NOT use setlocal, so they propagate back
 REM to the caller. Change detection logic here only.
 REM
 REM Exports: ROOT BUNDLE WEBUI_DIR PY HAS_CUDA BACKEND SERVER_EXE CLI_EXE GGUF_EXE
 
-REM --- ROOT = this script's directory, without the trailing backslash ---
-set "ROOT=%~dp0"
-if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+REM --- WEBUI_DIR = this script's directory; ROOT = repository/bundle root. ---
+set "WEBUI_DIR=%~dp0"
+if "%WEBUI_DIR:~-1%"=="\" set "WEBUI_DIR=%WEBUI_DIR:~0,-1%"
+for %%I in ("%WEBUI_DIR%\..") do set "ROOT=%%~fI"
 
 REM Dev tree: the repo root doubles as the bundle (models\ live under it; the
 REM binaries live under build\). webui.py's own _find_bundle_root handles this.
 set "BUNDLE=%ROOT%"
-set "WEBUI_DIR=%ROOT%\webui"
 
 REM --- Python with the deps (gradio/requests/torch/safetensors/opencc/...) ---
 REM Order: explicit override, project venv (Scripts\ on Windows), then a bundle venv.
@@ -21,6 +21,8 @@ set "PY="
 if defined AUDIOCPP_PYTHON if exist "%AUDIOCPP_PYTHON%" set "PY=%AUDIOCPP_PYTHON%"
 if not defined PY if exist "%ROOT%\venv\Scripts\python.exe" set "PY=%ROOT%\venv\Scripts\python.exe"
 if not defined PY if exist "%ROOT%\venv\python.exe"         set "PY=%ROOT%\venv\python.exe"
+if not defined PY if exist "%WEBUI_DIR%\venv\Scripts\python.exe" set "PY=%WEBUI_DIR%\venv\Scripts\python.exe"
+if not defined PY if exist "%WEBUI_DIR%\venv\python.exe"         set "PY=%WEBUI_DIR%\venv\python.exe"
 if not defined PY if exist "%BUNDLE%\venv\Scripts\python.exe" set "PY=%BUNDLE%\venv\Scripts\python.exe"
 if not defined PY if exist "%BUNDLE%\venv\python.exe"         set "PY=%BUNDLE%\venv\python.exe"
 

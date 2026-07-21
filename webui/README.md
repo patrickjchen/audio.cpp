@@ -1,36 +1,32 @@
 # audio.cpp WebUI 启动脚本说明
 
-仓库根目录下的一组 `.bat` 脚本，覆盖 audio.cpp 的三种本地运行方式：命令行单句合成、
-HTTP API 服务、图形界面。所有脚本都可以**双击运行**，也可以在命令行/PowerShell
-里带参数调用。
+`webui/` 目录包含 WebUI 运行所需的 Python 依赖、启动脚本和模型下载包装器。
+启动脚本可以**双击运行**，也可以在命令行/PowerShell 里调用。
 
 | 脚本 | 作用 | 典型命令 |
 |---|---|---|
-| `run_cli_tts.bat` | 单句/单次命令行 TTS | `run_cli_tts.bat qwen3-tts "你好世界"` |
-| `run_server.bat` | OpenAI 兼容 HTTP API 服务 | `run_server.bat qwen3-tts 8080` |
-| `run_server_asr.bat` | Qwen3-ASR 服务（`run_server.bat` 的 ASR 预设） | `run_server_asr.bat`（默认 :8081） |
-| `run_webui.bat` | Gradio 网页界面（按需起服务） | `run_webui.bat` |
-| `_env.bat` | 共享环境探测（**不直接运行**） | 被其它脚本 `call` |
+| `webui/run_webui.bat` | Gradio 网页界面（按需起服务） | `webui\run_webui.bat` |
+| `webui/run_webui.sh` | Linux / macOS WebUI 启动脚本 | `./webui/run_webui.sh` |
+| `webui/_env.bat` | WebUI 环境探测（**不直接运行**） | 被 `run_webui.bat` `call` |
 
 ## Linux / macOS
 
-本文档其余部分描述 Windows 的 `.bat` 脚本。在 Linux / macOS 上用仓库根目录的
-`run_webui.sh`（`run_webui.bat` 的 POSIX 版本）：
+在 Linux / macOS 上用 `webui/run_webui.sh`：
 
 ```bash
-python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
-./run_webui.sh                      # UI -> http://127.0.0.1:7860
+python3 -m venv venv && ./venv/bin/pip install -r webui/requirements.txt
+./webui/run_webui.sh                # UI -> http://127.0.0.1:7860
 ```
 
 - Python 解释器依次探测 `$AUDIOCPP_PYTHON`、`venv/bin/python`、`.venv/bin/python`、
-  `python3`、`python`。
+  `webui/venv/bin/python`、`webui/.venv/bin/python`、`python3`、`python`。
 - 后端（cuda/cpu）自动探测：Windows 看 `nvcuda.dll`，其它平台看 `nvidia-smi`，
   再确认对应的 server 构建存在；用 `AUDIOCPP_BACKEND=gpu|cpu` 覆盖。
 - 二进制既支持 portable 包的 `gpu/`、`cpu/` 目录，也支持从源码构建的
   `build/<os>-<backend>-<type>/bin`（如 `build/linux-cuda-release/bin`）。
   直接 `cmake -B build` 产生的 `build/bin` 也能识别——目录名不含后端信息时，
   从 `CMakeCache.txt` 的 `GGML_CUDA` 判断。
-- `requirements.txt` 里 Windows 专用的包（pywin32 及 SpeakType 用到的
+- `webui/requirements.txt` 里 Windows 专用的包（pywin32 及 SpeakType 用到的
   pythonnet/pywebview）带 `sys_platform` 标记，因此在 Linux 上也能直接安装。
 
 ## 界面语言 / UI language
@@ -57,8 +53,8 @@ python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 
 ## 通用约定
 
-- **模型用 catalog id 指定。** 两个合成脚本（cli / server）都用 `configs\models_catalog.json`
-  里的 **id** 来指定模型，脚本会自动查出它的 `family` / `task` / 绝对路径，你不用再手写这些。
+- **模型用 catalog id 指定。** WebUI 使用 `webui/configs/models_catalog.json`
+  里的 **id** 来指定模型，并自动查出它的 `family` / `task` / 绝对路径，你不用再手写这些。
   当前已安装的 id：`qwen3-tts`、`qwen3-asr`、`vibevoice`、`omnivoice`、`pocket-tts`。
   未安装的 id 会提示 “not installed”，可在 WebUI 里下载，或用
   `python tools/model_manager.py install <download_id>` 安装（见 `models_catalog.json`）。
@@ -71,7 +67,7 @@ python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 
 ---
 
-## `_env.bat`（内部共享，不要直接运行）
+## `webui/_env.bat`（内部共享，不要直接运行）
 
 被其它脚本 `call`，负责一次性设置好公共变量（故意不用 `setlocal`，这样变量能带回调用方）：
 
@@ -79,119 +75,24 @@ python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 - `HAS_CUDA` — 是否检测到 CUDA（`nvcuda.dll` 或 `nvidia-smi`）
 - `BACKEND` / `CLI_EXE` — 选定的后端（`cuda`/`cpu`）与对应的 `audiocpp_cli.exe`
 - `SERVER_EXE` — 按 `BACKEND` 选 `gpu\` 或 `cpu\` 的 `audiocpp_server.exe`（cpu 版缺失时回退 gpu 版）
-- `PY` — 带依赖的 Python（供 `run_webui.bat` 用）
+- `PY` — 带依赖的 Python（供 `webui/run_webui.bat` 用）
 
 改动探测逻辑只需改这一个文件。
 
 ---
 
-## 1. `run_cli_tts.bat` — 命令行单次 TTS
-
-一次加载模型、合成一句、输出一个 wav。适合快速测试或脚本化单次生成。
-
-```
-用法: run_cli_tts.bat [model_id] ["合成文本"] [voice_ref] [ref_text]
-```
-
-| 位置参数 | 含义 | 默认 |
-|---|---|---|
-| 1 `model_id` | catalog 里的模型 id | `qwen3-tts` |
-| 2 `"文本"` | 要合成的文本（含空格务必加引号） | 一句英文示例 |
-| 3 `voice_ref` | 参考音色 wav（声音克隆用） | `voice\demo_01_man.wav` |
-| 4 `ref_text` | 参考音频对应的文本 | 示例台词 |
-
-- 输出固定到 `output\out_cli.wav`（可在脚本顶部改 `OUT`）。
-- 语言、`max-tokens`、`seed` 等也在脚本顶部可改。
-- 非声音克隆的模型可把 `VOICE_REF` 留空（脚本会自动不带 `--voice-ref`）。
-
-**示例**
-
-```bat
-run_cli_tts.bat qwen3-tts "Hello, this is audio dot cpp."
-run_cli_tts.bat qwen3-tts "换个音色" voice\demo_02_woman.wav "her reference line."
-set AUDIOCPP_BACKEND=cpu & run_cli_tts.bat qwen3-tts "强制用 CPU 跑"
-```
-
----
-
-## 2. `run_server.bat` — HTTP API 服务
-
-启动一个 OpenAI 兼容的 HTTP 服务，供**其它应用**调用。后端自动检测：有 CUDA 用 GPU，
-否则用 CPU 版 server（CPU 下自动把 ggml 线程数设为核数-1；速度较慢，部分大模型不实用）。
-
-```
-用法: run_server.bat <model_id> [port] [device]
-```
-
-| 位置参数 | 含义 | 默认 |
-|---|---|---|
-| 1 `model_id` | catalog 里的模型 id | （必填） |
-| 2 `port` | 监听端口 | `8080` |
-| 3 `device` | GPU 设备号 | `0` |
-
-- 脚本会用该 id 生成一份**单模型、绝对路径**的临时配置
-  `%TEMP%\audiocpp_server_<port>.json`（按端口命名，两个实例互不冲突），再启动 server。
-- **同时起两个服务**：在两个窗口分别运行不同 id + 不同端口，例如一个做 TTS、一个做 ASR：
-
-  ```bat
-  run_server.bat qwen3-tts 8080     :: 窗口 A：TTS
-  run_server_asr.bat                :: 窗口 B：ASR（= run_server.bat qwen3-asr 8081）
-  ```
-
-  ⚠️ 两个模型要同时装进显存（8GB 下 0.6B + 0.6B 没问题；两个 1.7B 装不下）。
-- **`run_server_asr.bat`**：`run_server.bat` 的 ASR 预设包装，双击即用。
-  参数为 `[port] [device] [model_id]`，默认 `8081` / `0` / `qwen3-asr`。
-- **局域网访问**：设 `AUDIOCPP_HOST=0.0.0.0` 让其它机器能连（**无鉴权**，仅在可信内网使用）。
-
-### API 端点
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/health` | 就绪状态 + 已配置模型数 |
-| GET | `/v1/models` | 列出该实例加载的模型 |
-| POST | `/v1/audio/speech` | 文本转语音，默认返回 `audio/wav` |
-| POST | `/v1/audio/transcriptions` | 语音转文本（ASR） |
-| POST | `/v1/tasks/run` | 通用任务入口（字段同 CLI 请求格式） |
-
-> **参考音色是每次请求带的**（server 端不预存音色）。声音克隆 TTS 每个请求要带
-> `voice_ref` + `reference_text`。请求里的 `voice_ref` / `audio` 路径是**服务器本机路径**，
-> 相对路径以 server 的工作目录（用本脚本启动时即 `webui\`）为基准，也可用绝对路径。
-
-### 调用示例
-
-TTS（用现成模板 `configs\req_speech.json`，其中含 `input`/`voice_ref`/`reference_text`）：
-
-```bat
-curl http://127.0.0.1:8080/v1/audio/speech -H "Content-Type: application/json" -o output\out_server.wav -d @configs\req_speech.json
-```
-
-ASR（音频用服务器本机路径）：
-
-```bat
-curl http://127.0.0.1:8081/v1/audio/transcriptions -H "Content-Type: application/json" -d "{\"model\":\"qwen3-asr\",\"audio\":\"D:/path/to/input.wav\"}"
-```
-
-查看状态：
-
-```bat
-curl http://127.0.0.1:8080/health
-curl http://127.0.0.1:8080/v1/models
-```
-
----
-
-## 3. `run_webui.bat` — 图形界面
+## `webui/run_webui.bat` — 图形界面
 
 启动 Gradio 网页界面（`webui.py`），浏览器访问 **http://127.0.0.1:7860**。
 
-- **按需加载**：不需要先跑 `run_server.bat`——在界面里选模型点“加载”/“生成”时，WebUI 会自动
+- **按需加载**：不需要先手动启动 `audiocpp_server`——在界面里选模型点“加载”/“生成”时，WebUI 会自动
   起/切换底层的 `audiocpp_server`（一次一个模型在显存里，换模型即重启）。
 - 界面里可上传参考音色、下载未安装的模型、填 HF token / 代理等。
 - 后端自动检测（同上：有 CUDA 用 GPU，否则 CPU）；`AUDIOCPP_BACKEND=gpu|cpu` 可强制。
   CPU 模式下 ggml 线程数自动设为核数-1（可用 `AUDIOCPP_THREADS=N` 覆盖），且不再显示显存警告。
 
-> 网页界面（7860）是给人用的；要给**其它程序**当 API，请用 `run_server.bat` 起的 **8080** 那个服务，
-> 或让 WebUI 起来后直接打它的 8080 端口（见 `run_server.bat` 的端点表）。
+> 网页界面（7860）是给人用的；要给**其它程序**当 API，请直接启动 `audiocpp_server`，
+> 或让 WebUI 起来后直接打它管理的 8080 端口。
 
 ---
 
@@ -380,7 +281,7 @@ singing 路线默认开，style_converted_vc / editing 默认关。
 
 - **`.bat` 双击闪退 / 命令语法错误**：这些脚本必须是 **CRLF** 行尾（LF 会让 cmd 解析出错），
   编辑后请保持 CRLF。
-- **端口被占用**：`run_server.bat` 和 WebUI 默认都用 8080。要同时用，就给 server 换端口，
+- **端口被占用**：WebUI 管理的 `audiocpp_server` 默认用 8080。要同时跑外部 server，就给其中一个换端口，
   或设 `AUDIOCPP_SERVER` 让 WebUI 复用外部 server。
 - **`model path does not exist` / not installed**：模型没装。用上面的 model_manager 命令或 WebUI 下载。
 - **显存不足**：8GB 下同时跑两个 server 时，两个模型都要装得下；1.7B 建议单开。
@@ -393,8 +294,8 @@ singing 路线默认开，style_converted_vc / editing 默认关。
 
 同一套引擎、同一后端 → **推理本身完全一样**。差别主要在**模型加载的摊销**：
 
-- `run_cli_tts.bat` **每次调用都要把模型重新装进显存**（每次固定几秒开销）。
-- `run_server.bat` 的服务**只加载一次、常驻**，之后每个请求只花“推理 + 极小的传输”。
+- 直接调用 `audiocpp_cli` **每次调用都要把模型重新装进显存**（每次固定几秒开销）。
+- `audiocpp_server` 的服务**只加载一次、常驻**，之后每个请求只花“推理 + 极小的传输”。
   本机 HTTP + 几 MB 的 wav 传输 ≈ 毫秒级，相对多秒的推理可忽略（建议用默认二进制 wav，
   别用 `response_format:"json"` 的 base64，会大约 +33%）。
 - 网页界面（7860）比直连 8080 多一跳代理；其它程序直接打 8080 就没有这一跳。

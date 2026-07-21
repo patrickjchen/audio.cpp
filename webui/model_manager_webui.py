@@ -29,11 +29,17 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Iterable
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+TOOLS_DIR = REPO_ROOT / "tools"
+if str(TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOLS_DIR))
 
 import model_manager as mm
 

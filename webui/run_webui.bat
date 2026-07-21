@@ -16,6 +16,8 @@ if not exist "%PY%" (
   echo   %BUNDLE%\venv\python.exe                  ^(bundle venv^)
   echo   %ROOT%\venv\python.exe                      ^(root venv^)
   echo   %ROOT%\venv\Scripts\python.exe              ^(project venv^)
+  echo   %WEBUI_DIR%\venv\python.exe                 ^(webui venv^)
+  echo   %WEBUI_DIR%\venv\Scripts\python.exe         ^(webui venv^)
   echo Install into one of them: gradio requests torch safetensors pyyaml huggingface_hub
   pause
   exit /b 1
@@ -23,7 +25,7 @@ if not exist "%PY%" (
 echo [run_webui] python: %PY%
 
 echo [run_webui] the WebUI starts/switches audiocpp_server on demand
-echo [run_webui]   pick a model in the UI and click "load" (no need to run run_server.bat)
+echo [run_webui]   pick a model in the UI and click "load" (no need to start audiocpp_server first)
 echo [run_webui]   backend: %AUDIOCPP_BACKEND%  (auto-detected; override with AUDIOCPP_BACKEND=gpu or cpu)
 echo [run_webui] UI -^> http://127.0.0.1:7860
 "%PY%" "%WEBUI_DIR%\webui.py"
