@@ -550,7 +550,7 @@ MODEL_PROFILES = {
     "ace_step": {
         "input_hint": (
             "**ACE-Step** 音乐生成/编辑：提示词写风格/乐器/情绪（英文最佳），可填歌词。"
-            "编辑类 route 需上传源音频并建议先点『🔍 分析源音频』；参数详解见 webui/README.md。"),
+            "编辑类 route 需上传源音频并建议先点『🔍 分析源音频』；参数详解见 webui/README.zh.md。"),
         # 原版 turbo UI 默认 shift=3.0（C++ 端默认 1.0，仅 remix/extract 路由自带 3.0）。
         # 控件只发用户改过的项，所以这里显式发送，保证 UI 显示值=实际值。
         "default_options": {"shift": 3.0},
@@ -568,7 +568,7 @@ MODEL_PROFILES = {
     "vevo2": {
         "input_hint": (
             "**Vevo2**：源语音 + 目标音色，默认只换音色（保留说话风格）；"
-            "风格转换类 route 需 JSON 补 `style_ref` 等，详见 webui/README.md。"
+            "风格转换类 route 需 JSON 补 `style_ref` 等，详见 webui/README.zh.md。"
             "长音频自动分段，参考音色自动截 ≤10s。"),
         # 8G 4060 实测标定（2026-07-04/07-05）：FM 图一次建图，序列长度 =
         # 目标音色(prompt) + 源(target) 帧数（均 50fps，见 fm.cpp:782 cond_frames =
@@ -4585,10 +4585,10 @@ with gr.Blocks(title="audio.cpp WebUI") as demo:
     _localized(
         gr.Markdown(
             "---\n<center><small>audio.cpp WebUI · 按需加载，同一时刻只驻留一个模型 · "
-            "详细说明见 webui/README.md</small></center>"),
+            "详细说明见 webui/README.zh.md</small></center>"),
         value=(
             "---\n<center><small>audio.cpp WebUI · 按需加载，同一时刻只驻留一个模型 · "
-            "详细说明见 webui/README.md</small></center>",
+            "详细说明见 webui/README.zh.md</small></center>",
             "---\n<center><small>audio.cpp WebUI · On-demand loading · One model at a time · "
             "See webui/README.md</small></center>"))
 
